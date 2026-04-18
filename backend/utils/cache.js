@@ -30,11 +30,12 @@ let redisClient = null;
 try {
   redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     lazyConnect: true,
-    connectTimeout: 3000,
-    enableOfflineQueue: false,        // don't queue ops when disconnected
+    connectTimeout: 10000,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: null,
     retryStrategy: (times) => {
-      if (times > 2) return null;     // stop retrying after 3 attempts
-      return times * 300;
+      if (times > 10) return null;
+      return Math.min(times * 500, 5000);
     },
   });
 
