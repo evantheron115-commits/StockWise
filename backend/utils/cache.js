@@ -29,7 +29,6 @@ let redisClient = null;
 
 try {
   redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    lazyConnect: true,
     connectTimeout: 10000,
     enableOfflineQueue: false,
     maxRetriesPerRequest: null,
