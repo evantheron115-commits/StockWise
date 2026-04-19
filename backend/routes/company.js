@@ -11,6 +11,9 @@ router.get('/:ticker', ctrl.getCompany);
 // Financial statements (income, balance, cashflow)
 router.get('/:ticker/financials', ctrl.getFinancials);
 
+// Latest news articles
+router.get('/:ticker/news', ctrl.getNews);
+
 // Price chart data
 router.get('/:ticker/chart', ctrl.getChart);
 

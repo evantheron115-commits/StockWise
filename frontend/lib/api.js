@@ -68,3 +68,9 @@ export async function runDCF(ticker, params) {
   const { data } = await api.post(`/api/company/${ticker}/dcf`, params);
   return data.data;
 }
+
+export async function getNews(ticker) {
+  console.log('[API] getNews:', ticker);
+  const { data } = await api.get(`/api/company/${ticker}/news`);
+  return { payload: data.data, source: data.source };
+}

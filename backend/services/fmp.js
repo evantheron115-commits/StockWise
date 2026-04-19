@@ -99,6 +99,12 @@ async function searchTickers(query) {
   return fetchWithRetry(url);
 }
 
+// Latest news articles for a ticker
+async function fetchNews(ticker, limit = 10) {
+  const url = `${BASE_URL}/news?tickers=${ticker}&limit=${limit}&apikey=${API_KEY}`;
+  return fetchWithRetry(url);
+}
+
 module.exports = {
   fetchCompanyProfile,
   fetchQuote,
@@ -107,4 +113,5 @@ module.exports = {
   fetchCashFlow,
   fetchHistoricalPrices,
   searchTickers,
+  fetchNews,
 };

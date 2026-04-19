@@ -280,6 +280,43 @@ async function runDCF(req, res) {
   }
 }
 
+// ── GET /api/company/:ticker/news ─────────────────────────────────────────────
+
+async function getNews(req, res) {
+  const ticker   = req.params.ticker.toUpperCase();
+  const limit    = Math.min(parseInt(req.query.limit) || 10, 20);
+  const cacheKey = `news:${ticker}`;
+
+  try {
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      console.log(`[getNews] Cache hit: ${ticker}`);
+      return res.json({ source: 'cache', data: cached });
+    }
+
+    const raw = await fmp.fetchNews(ticker, limit);
+    const articles = (Array.isArray(raw) ? raw : []).slice(0, limit).map((a) => ({
+      title:       a.title       || '',
+      url:         a.url         || '',
+      source:      a.site        || a.publisher || '',
+      publishedAt: a.publishedDate || a.date || '',
+      summary:     a.text
+        ? a.text.slice(0, 200) + (a.text.length > 200 ? '…' : '')
+        : '',
+      image:       a.image       || null,
+    }));
+
+    // Cache news for 30 minutes — it updates frequently
+    await setCache(cacheKey, articles, 30 * 60);
+    return res.json({ source: 'api', data: articles });
+
+  } catch (err) {
+    if (err.isRateLimit) return sendRateLimit(res);
+    console.error(`[getNews] ${ticker}:`, err.message);
+    return res.status(500).json({ error: 'Failed to fetch news.' });
+  }
+}
+
 // ── GET /api/company/search?q= ─────────────────────────────────────────────────
 
 async function searchCompanies(req, res) {
@@ -304,4 +341,4 @@ async function searchCompanies(req, res) {
   }
 }
 
-module.exports = { getCompany, getFinancials, getChart, runDCF, searchCompanies };
+module.exports = { getCompany, getFinancials, getChart, runDCF, searchCompanies, getNews };
