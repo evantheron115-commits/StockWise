@@ -1,7 +1,7 @@
 {
-  "name": "stoxora-backend",
+  "name": "valubull-backend",
   "version": "1.0.0",
-  "description": "Stoxora Backend",
+  "description": "ValuBull Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

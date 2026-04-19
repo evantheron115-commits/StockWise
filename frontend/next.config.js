@@ -8,7 +8,7 @@ if (process.env.NODE_ENV === 'production') {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl || apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
     throw new Error(
-      '\n\n[Stoxora] Build aborted: NEXT_PUBLIC_API_URL is missing or points to localhost.\n' +
+      '\n\n[ValuBull] Build aborted: NEXT_PUBLIC_API_URL is missing or points to localhost.\n' +
       'Add it in Vercel → Settings → Environment Variables:\n' +
       '  NEXT_PUBLIC_API_URL = https://your-backend.up.railway.app\n' +
       'Then trigger a new deployment.\n'

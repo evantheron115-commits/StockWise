@@ -41,7 +41,7 @@ function Nav() {
             </svg>
           </div>
           <span className="text-white font-semibold text-base tracking-tight group-hover:text-brand-300 transition-colors">
-            Stoxora
+            ValuBull
           </span>
         </Link>
 
@@ -69,7 +69,7 @@ export default function App({ Component, pageProps }) {
   return (
     <>
       <Head>
-        <title>Stoxora — Intelligent Equity Analysis</title>
+        <title>ValuBull — Intelligent Equity Analysis</title>
         <meta name="description" content="Professional stock analysis, DCF valuation, and financial statements." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
@@ -82,7 +82,7 @@ export default function App({ Component, pageProps }) {
           </ErrorBoundary>
         </main>
         <footer className="border-t border-white/[0.06] py-5 text-center text-xs text-gray-700">
-          Stoxora · Data from Financial Modeling Prep & Polygon.io · Not financial advice
+          ValuBull · Data from Financial Modeling Prep & Polygon.io · Not financial advice
         </footer>
       </div>
     </>

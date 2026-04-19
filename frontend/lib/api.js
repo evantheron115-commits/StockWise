@@ -12,7 +12,7 @@ if (
   (API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1'))
 ) {
   console.error(
-    '[Stoxora] NEXT_PUBLIC_API_URL is pointing to localhost in production. ' +
+    '[ValuBull] NEXT_PUBLIC_API_URL is pointing to localhost in production. ' +
     'All API calls will fail. Set it in Vercel → Settings → Environment Variables.'
   );
 }

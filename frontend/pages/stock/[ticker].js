@@ -201,7 +201,7 @@ export default function StockPage() {
   return (
     <>
       <Head>
-        <title>{company?.name || ticker} ({ticker?.toUpperCase()}) — Stoxora</title>
+        <title>{company?.name || ticker} ({ticker?.toUpperCase()}) — ValuBull</title>
       </Head>
 
       <div className="max-w-5xl mx-auto px-4 py-8">

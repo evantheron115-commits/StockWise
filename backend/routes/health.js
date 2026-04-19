@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
 
   res.status(dbStatus === 'ok' ? 200 : 503).json({
     status,
-    service:   'Stoxora API',
+    service:   'ValuBull API',
     version:   '1.0.0',
     db:        dbStatus,
     cache,
