@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,43 +6,114 @@
 
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100 antialiased;
+    @apply bg-surface-950 text-gray-100 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
   }
-  h1 { @apply text-2xl font-semibold; }
-  h2 { @apply text-lg font-medium; }
+  h1 { @apply text-2xl font-semibold tracking-tight; }
+  h2 { @apply text-base font-semibold tracking-tight; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar       { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-surface-600 rounded-full; }
 }
 
 @layer components {
+
+  /* ── Cards ─────────────────────────────────────────────────────── */
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+    @apply bg-surface-900 border border-white/[0.06] rounded-xl p-5 shadow-card;
+  }
+  .card-inner {
+    @apply bg-surface-800 border border-white/[0.05] rounded-lg p-4;
   }
   .stat-card {
-    @apply bg-gray-800/50 rounded-lg p-4;
+    @apply bg-surface-800 border border-white/[0.05] rounded-lg p-4;
+    transition: border-color 0.15s ease;
   }
+  .stat-card:hover {
+    @apply border-white/10;
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────────── */
   .input-base {
-    @apply bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
-           text-gray-100 placeholder-gray-500 focus:outline-none
-           focus:border-brand-500 focus:ring-1 focus:ring-brand-500
-           transition-colors w-full;
+    @apply bg-surface-800 border border-white/10 rounded-lg px-4 py-2.5
+           text-gray-100 placeholder-gray-600
+           focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50
+           transition-colors w-full text-sm;
   }
+
+  /* ── Buttons ────────────────────────────────────────────────────── */
   .btn-primary {
-    @apply bg-brand-600 hover:bg-brand-500 text-white font-medium
-           px-5 py-2.5 rounded-lg transition-colors focus:outline-none
-           focus:ring-2 focus:ring-brand-500 focus:ring-offset-2
-           focus:ring-offset-gray-950 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-brand-600 hover:bg-brand-500 active:bg-brand-700
+           text-white font-medium text-sm
+           px-5 py-2.5 rounded-lg transition-colors
+           focus:outline-none focus:ring-2 focus:ring-brand-500/50
+           disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply text-gray-400 hover:text-gray-100 hover:bg-gray-800
+    @apply text-gray-400 hover:text-gray-100 hover:bg-surface-700
            px-3 py-1.5 rounded-lg transition-colors text-sm;
   }
+  .btn-secondary {
+    @apply bg-surface-700 hover:bg-surface-600 border border-white/10
+           text-gray-300 hover:text-white font-medium text-sm
+           px-4 py-2 rounded-lg transition-colors;
+  }
+
+  /* ── Tabs ───────────────────────────────────────────────────────── */
   .tab {
-    @apply pb-3 px-1 text-sm font-medium text-gray-500 border-b-2
-           border-transparent cursor-pointer transition-colors
-           hover:text-gray-300;
+    @apply pb-3 px-3 text-sm font-medium text-gray-500 border-b-2
+           border-transparent cursor-pointer transition-all
+           hover:text-gray-300 whitespace-nowrap;
   }
   .tab-active {
-    @apply text-gray-100 border-brand-500;
+    @apply text-white border-brand-500;
   }
+
+  /* ── Value colors ───────────────────────────────────────────────── */
   .up   { @apply text-emerald-400; }
   .down { @apply text-red-400; }
+  .neutral { @apply text-gray-400; }
+
+  /* ── Table ──────────────────────────────────────────────────────── */
+  .data-table {
+    @apply w-full text-sm border-collapse;
+  }
+  .data-table th {
+    @apply text-left pb-3 text-xs font-medium text-gray-500 border-b border-white/[0.06];
+  }
+  .data-table td {
+    @apply py-2.5 text-sm border-b border-white/[0.04];
+  }
+  .data-table tr:last-child td {
+    @apply border-0;
+  }
+  .data-table tr:hover td {
+    @apply bg-surface-800/50;
+  }
+
+  /* ── Badge ──────────────────────────────────────────────────────── */
+  .badge {
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+  .badge-blue {
+    @apply bg-brand-500/10 text-brand-400 border border-brand-500/20;
+  }
+  .badge-green {
+    @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
+  }
+  .badge-gray {
+    @apply bg-surface-700 text-gray-400 border border-white/[0.06];
+  }
+
+  /* ── Skeleton loader ────────────────────────────────────────────── */
+  .skeleton {
+    @apply bg-surface-700 rounded animate-pulse;
+  }
+
+  /* ── Divider ────────────────────────────────────────────────────── */
+  .divider {
+    @apply border-t border-white/[0.06] my-5;
+  }
 }
