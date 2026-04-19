@@ -69,6 +69,20 @@ CREATE TABLE IF NOT EXISTS stock_prices (
 
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON stock_prices(ticker, date DESC);
 
+-- Users (auth)
+CREATE TABLE IF NOT EXISTS users (
+  id         SERIAL PRIMARY KEY,
+  email      VARCHAR(255) NOT NULL UNIQUE,
+  name       VARCHAR(255),
+  password   TEXT,                    -- null for OAuth-only accounts
+  provider   VARCHAR(50)  DEFAULT 'email',
+  avatar     TEXT,
+  created_at TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
 -- DCF calculation history (optional, for future use)
 CREATE TABLE IF NOT EXISTS dcf_runs (
   id                  SERIAL PRIMARY KEY,

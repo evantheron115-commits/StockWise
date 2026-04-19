@@ -100,8 +100,43 @@ async function getPricesFromDB(ticker, years = 5) {
   return rows;
 }
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+async function createUser({ email, name, password, provider = 'email', avatar = null }) {
+  const { rows } = await pool.query(
+    `INSERT INTO users (email, name, password, provider, avatar)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, email, name, provider, avatar, created_at`,
+    [email.toLowerCase(), name || null, password || null, provider, avatar]
+  );
+  return rows[0];
+}
+
+async function getUserByEmail(email) {
+  const { rows } = await pool.query(
+    'SELECT * FROM users WHERE email = $1',
+    [email.toLowerCase()]
+  );
+  return rows[0] || null;
+}
+
+async function upsertOAuthUser({ email, name, avatar, provider }) {
+  const { rows } = await pool.query(
+    `INSERT INTO users (email, name, avatar, provider)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (email) DO UPDATE SET
+       name = COALESCE(EXCLUDED.name, users.name),
+       avatar = COALESCE(EXCLUDED.avatar, users.avatar),
+       updated_at = NOW()
+     RETURNING id, email, name, provider, avatar`,
+    [email.toLowerCase(), name || null, avatar || null, provider]
+  );
+  return rows[0];
+}
+
 module.exports = {
   upsertCompany, getCompanyFromDB,
   upsertFinancials, getFinancialsFromDB,
   upsertPrices, getPricesFromDB,
+  createUser, getUserByEmail, upsertOAuthUser,
 };

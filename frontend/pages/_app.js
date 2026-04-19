@@ -2,7 +2,8 @@ import '../styles/globals.css';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Component } from 'react';
+import { Component, useState, useRef, useEffect } from 'react';
+import { SessionProvider, useSession, signOut } from 'next-auth/react';
 
 class ErrorBoundary extends Component {
   state = { hasError: false };
@@ -23,6 +24,75 @@ class ErrorBoundary extends Component {
     }
     return this.props.children;
   }
+}
+
+function UserMenu() {
+  const { data: session } = useSession();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  if (!session) {
+    return (
+      <Link
+        href="/auth/login"
+        className="text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+      >
+        Sign In
+      </Link>
+    );
+  }
+
+  const initials = session.user?.name
+    ? session.user.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+    : session.user?.email?.[0]?.toUpperCase() || '?';
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 group"
+        aria-label="User menu"
+      >
+        {session.user?.avatar || session.user?.image ? (
+          <img
+            src={session.user.avatar || session.user.image}
+            alt=""
+            className="w-7 h-7 rounded-full object-cover ring-1 ring-white/10"
+          />
+        ) : (
+          <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-xs font-semibold text-white">
+            {initials}
+          </div>
+        )}
+        <span className="text-xs text-gray-400 group-hover:text-gray-200 transition-colors hidden sm:block max-w-[120px] truncate">
+          {session.user?.name || session.user?.email}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-52 bg-surface-900 border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden z-50">
+          <div className="px-4 py-3 border-b border-white/[0.06]">
+            <p className="text-xs font-medium text-gray-200 truncate">
+              {session.user?.name || 'Account'}
+            </p>
+            <p className="text-[11px] text-gray-600 truncate">{session.user?.email}</p>
+          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: '/' })}
+            className="w-full text-left px-4 py-2.5 text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Nav() {
@@ -58,6 +128,7 @@ function Nav() {
           <span className="text-xs text-gray-700 hidden md:block">
             Not financial advice
           </span>
+          <UserMenu />
         </div>
 
       </div>
@@ -65,9 +136,9 @@ function Nav() {
   );
 }
 
-export default function App({ Component, pageProps }) {
+export default function App({ Component, pageProps: { session, ...pageProps } }) {
   return (
-    <>
+    <SessionProvider session={session}>
       <Head>
         <title>ValuBull — Intelligent Equity Analysis</title>
         <meta name="description" content="Professional stock analysis, DCF valuation, and financial statements." />
@@ -85,6 +156,6 @@ export default function App({ Component, pageProps }) {
           ValuBull · Data from Financial Modeling Prep & Polygon.io · Not financial advice
         </footer>
       </div>
-    </>
+    </SessionProvider>
   );
 }

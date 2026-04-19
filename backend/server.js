@@ -4,7 +4,8 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 const companyRoutes = require('./routes/company');
-const healthRoutes = require('./routes/health');
+const healthRoutes  = require('./routes/health');
+const authRoutes    = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -25,8 +26,9 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // Routes
-app.use('/api/health', healthRoutes);
+app.use('/api/health',  healthRoutes);
 app.use('/api/company', companyRoutes);
+app.use('/api/auth',    authRoutes);
 
 // 404 handler
 app.use((req, res) => {
