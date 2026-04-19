@@ -317,6 +317,18 @@ async function getNews(req, res) {
   }
 }
 
+// Maps Polygon MIC codes / market strings to short display labels
+function friendlyExchange(raw) {
+  const map = {
+    'XNAS': 'NASDAQ', 'XNYS': 'NYSE', 'XASE': 'AMEX',
+    'ARCX': 'NYSE Arca', 'BATS': 'CBOE', 'OTCM': 'OTC',
+    'XLON': 'LSE', 'XPAR': 'Euronext', 'XFRA': 'Frankfurt',
+    'XTSE': 'TSX', 'XHKG': 'HKEX', 'XTOK': 'TSE',
+    'stocks': 'US', 'otc': 'OTC', 'fx': 'FX', 'crypto': 'Crypto',
+  };
+  return map[raw] || raw;
+}
+
 // ── GET /api/company/search?q= ─────────────────────────────────────────────────
 
 async function searchCompanies(req, res) {
@@ -327,10 +339,12 @@ async function searchCompanies(req, res) {
 
   try {
     const response = await polygon.searchTickers(query);
-    const filtered  = (response?.results || []).slice(0, 8).map((r) => ({
+    const filtered  = (response?.results || []).slice(0, 10).map((r) => ({
       ticker:   r.ticker,
       name:     r.name,
-      exchange: r.primary_exchange || r.market || '',
+      exchange: friendlyExchange(r.primary_exchange || r.market || ''),
+      market:   r.market || '',
+      locale:   r.locale || '',
     }));
     return res.json({ data: filtered });
   } catch (err) {

@@ -40,7 +40,7 @@ async function fetchTickerDetails(ticker) {
 
 // Search tickers by name or symbol
 async function searchTickers(query) {
-  const url = `${BASE_URL}/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&market=stocks&limit=10`;
+  const url = `${BASE_URL}/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&limit=12`;
   return fetchWithRetry(url);
 }
 
