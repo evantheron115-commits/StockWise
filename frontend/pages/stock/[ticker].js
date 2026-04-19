@@ -7,8 +7,20 @@ import CompanyHeader  from '../../components/CompanyHeader';
 import PriceChart     from '../../components/PriceChart';
 import FinancialTable from '../../components/FinancialTable';
 import DCFTool        from '../../components/DCFTool';
+import CompanySummary from '../../components/CompanySummary';
+import KeyRatios      from '../../components/KeyRatios';
+import CommunityChat  from '../../components/CommunityChat';
 
-const TABS = ['Overview', 'Financials', 'DCF Valuation'];
+const TABS = [
+  { id: 'price',      label: 'Price + Chart' },
+  { id: 'summary',    label: 'Company Summary' },
+  { id: 'financials', label: 'Financial Statements' },
+  { id: 'ratios',     label: 'Key Ratios' },
+  { id: 'dcf',        label: 'DCF Valuation' },
+  { id: 'chat',       label: 'Community Chat' },
+];
+
+const VALID_TABS = new Set(TABS.map((t) => t.id));
 
 export default function StockPage() {
   const router     = useRouter();
@@ -16,39 +28,58 @@ export default function StockPage() {
 
   const [company,     setCompany]     = useState(null);
   const [financials,  setFinancials]  = useState(null);
-  const [tab,         setTab]         = useState('Overview');
+  const [tab,         setTab]         = useState('price');
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState(null);
   const [rateLimited, setRateLimited] = useState(false);
   const [dataLoaded,  setDataLoaded]  = useState(false);
-  const [dataSource,  setDataSource]  = useState(null); // 'cache' | 'api' | 'db'
+  const [dataSource,  setDataSource]  = useState(null);
 
   const financialsFetched = useRef(false);
   const inFlight          = useRef(false);
   const loadId            = useRef(0);
+  // Tracks which tabs have been opened at least once — avoids redundant fetches
+  const loadedTabs        = useRef(new Set());
 
-  // Reset state when ticker changes — do NOT auto-fetch
+  // ── Restore active tab from URL hash on mount ──────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash.slice(1);
+    if (VALID_TABS.has(hash)) setTab(hash);
+  }, []);
+
+  // ── Sync URL hash when tab changes ────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.location.hash = tab;
+  }, [tab]);
+
+  // ── Reset state when ticker changes ───────────────────────────────────────
   useEffect(() => {
     if (!ticker) return;
     loadId.current += 1;
-    console.log('[StockPage] Ticker changed to', ticker, '— waiting for user to load data');
     setCompany(null);
     setFinancials(null);
     setError(null);
     setRateLimited(false);
-    setTab('Overview');
+    setTab('price');
     setDataLoaded(false);
     setDataSource(null);
     financialsFetched.current = false;
     inFlight.current = false;
+    loadedTabs.current = new Set();
   }, [ticker]);
+
+  // ── Track which tabs have been opened ─────────────────────────────────────
+  useEffect(() => {
+    if (dataLoaded) loadedTabs.current.add(tab);
+  }, [tab, dataLoaded]);
 
   function loadData() {
     if (!ticker || inFlight.current) return;
     inFlight.current = true;
     loadId.current += 1;
     const thisLoadId = loadId.current;
-    console.log('[StockPage] User clicked Load Data for', ticker, '(loadId=' + thisLoadId + ')');
     setLoading(true);
     setError(null);
     setRateLimited(false);
@@ -59,11 +90,7 @@ export default function StockPage() {
 
     getCompany(ticker.toUpperCase())
       .then(({ payload, source }) => {
-        if (loadId.current !== thisLoadId) {
-          console.log('[StockPage] Discarding stale company result (loadId mismatch)');
-          return;
-        }
-        console.log(`[StockPage] Company loaded for ${ticker} — source: ${source}`);
+        if (loadId.current !== thisLoadId) return;
         setCompany(payload);
         setDataSource(source);
         setDataLoaded(true);
@@ -71,11 +98,9 @@ export default function StockPage() {
       .catch((err) => {
         if (loadId.current !== thisLoadId) return;
         if (err.isRateLimit) {
-          console.warn('[StockPage] Rate limited:', err.message);
           setRateLimited(true);
           setError(err.message);
         } else {
-          console.error('[StockPage] Failed to load company data:', err.message);
           setError(`Could not find data for "${ticker.toUpperCase()}". Check the ticker and try again.`);
         }
       })
@@ -86,28 +111,31 @@ export default function StockPage() {
       });
   }
 
-  // Fetch financials lazily — only when a tab that needs them is opened
+  // ── Lazy-fetch financials — only when first opening a tab that needs them ──
   useEffect(() => {
-    if (!ticker || !dataLoaded || financialsFetched.current) return;
-    if (tab !== 'Financials' && tab !== 'DCF Valuation') return;
+    const needsFinancials = tab === 'financials' || tab === 'dcf' || tab === 'ratios';
+    if (!ticker || !dataLoaded || financialsFetched.current || !needsFinancials) return;
 
     let cancelled = false;
     financialsFetched.current = true;
-    console.log('[StockPage] Loading financials for', ticker);
 
     getFinancials(ticker.toUpperCase())
-      .then(({ payload, source }) => {
-        if (!cancelled) {
-          console.log(`[StockPage] Financials loaded for ${ticker} — source: ${source}`);
-          setFinancials(payload);
-        }
+      .then(({ payload }) => {
+        if (!cancelled) setFinancials(payload);
       })
       .catch((err) => {
         console.warn('[StockPage] Financials failed (non-fatal):', err.message);
-        financialsFetched.current = false; // allow retry on next tab switch
+        financialsFetched.current = false;
       });
+
     return () => { cancelled = true; };
   }, [tab, ticker, dataLoaded]);
+
+  function handleTabChange(id) {
+    setTab(id);
+  }
+
+  // ── Guards ─────────────────────────────────────────────────────────────────
 
   if (!ticker) {
     return (
@@ -117,7 +145,6 @@ export default function StockPage() {
     );
   }
 
-  // Pre-load state — nothing has been fetched yet
   if (!loading && !dataLoaded && !error) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16 text-center">
@@ -152,8 +179,7 @@ export default function StockPage() {
         {rateLimited ? (
           <div className="space-y-3">
             <p className="text-xs text-gray-600 max-w-sm mx-auto">
-              The FMP free tier has a daily request limit. Wait a few minutes
-              or start Redis to serve from cache without hitting the API.
+              The FMP free tier has a daily request limit. Wait a few minutes and try again.
             </p>
             <div className="flex gap-3 justify-center mt-2">
               <button onClick={loadData} className="btn-primary">Try Again</button>
@@ -170,10 +196,12 @@ export default function StockPage() {
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────────
+
   return (
     <>
       <Head>
-        <title>{company?.name || ticker} ({ticker}) — StockWise</title>
+        <title>{company?.name || ticker} ({ticker?.toUpperCase()}) — Stoxora</title>
       </Head>
 
       <div className="max-w-5xl mx-auto px-4 py-8">
@@ -195,33 +223,33 @@ export default function StockPage() {
         {/* Company header */}
         {company && <CompanyHeader company={company} />}
 
-        {/* Tabs */}
+        {/* 6-tab navigation */}
         <div className="flex border-b border-gray-800 mb-6 gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`tab ${tab === t ? 'tab-active' : ''}`}
+              key={t.id}
+              onClick={() => handleTabChange(t.id)}
+              className={`tab whitespace-nowrap ${tab === t.id ? 'tab-active' : ''}`}
             >
-              {t}
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Tab content */}
-        {tab === 'Overview' && (
+        {/* Tab content — each tab mounts only when active */}
+
+        {tab === 'price' && (
           <>
             <PriceChart ticker={ticker?.toUpperCase()} />
-
             {company && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
                 {[
-                  ['Revenue (TTM)',       financials?.income?.[0]?.revenue],
-                  ['Net Income',          financials?.income?.[0]?.netIncome],
-                  ['Free Cash Flow',      financials?.cashflow?.[0]?.freeCashFlow],
-                  ['Total Assets',        financials?.balance?.[0]?.totalAssets],
-                  ['Total Debt',          financials?.balance?.[0]?.totalDebt],
-                  ["Shareholders' Equity",financials?.balance?.[0]?.shareholdersEquity],
+                  ['Revenue (TTM)',        financials?.income?.[0]?.revenue],
+                  ['Net Income',           financials?.income?.[0]?.netIncome],
+                  ['Free Cash Flow',       financials?.cashflow?.[0]?.freeCashFlow],
+                  ['Total Assets',         financials?.balance?.[0]?.totalAssets],
+                  ['Total Debt',           financials?.balance?.[0]?.totalDebt],
+                  ["Shareholders' Equity", financials?.balance?.[0]?.shareholdersEquity],
                 ].map(([label, val]) => (
                   <div key={label} className="stat-card">
                     <p className="text-xs text-gray-600 mb-1">{label}</p>
@@ -233,15 +261,31 @@ export default function StockPage() {
           </>
         )}
 
-        {tab === 'Financials' && (
+        {tab === 'summary' && (
+          <CompanySummary company={company} />
+        )}
+
+        {tab === 'financials' && (
           <FinancialTable financials={financials} />
         )}
 
-        {tab === 'DCF Valuation' && (
+        {tab === 'ratios' && (
+          <KeyRatios
+            ticker={ticker?.toUpperCase()}
+            financials={financials}
+            company={company}
+          />
+        )}
+
+        {tab === 'dcf' && (
           <DCFTool
             ticker={ticker?.toUpperCase()}
             currentPrice={company?.price}
           />
+        )}
+
+        {tab === 'chat' && (
+          <CommunityChat ticker={ticker?.toUpperCase()} />
         )}
 
       </div>
