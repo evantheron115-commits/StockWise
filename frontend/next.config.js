@@ -19,9 +19,7 @@ if (process.env.NODE_ENV === 'production') {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  turbopack: {
-    root: path.resolve(__dirname),
-  },
+  outputFileTracingRoot: path.resolve(__dirname),
 };
 
 module.exports = nextConfig;
