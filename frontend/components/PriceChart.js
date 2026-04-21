@@ -92,7 +92,7 @@ export default function PriceChart({ ticker }) {
 
   const firstPrice = thinned[0]?.close;
   const lastPrice  = thinned[thinned.length - 1]?.close;
-  const gain       = firstPrice ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+  const gain       = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
   const isUp       = gain >= 0;
   const lineColor  = isUp ? '#34d399' : '#f87171';
   const gradientId = `grad-${ticker}`;

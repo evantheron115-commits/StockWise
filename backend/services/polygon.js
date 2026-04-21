@@ -8,11 +8,13 @@ async function fetchWithRetry(url, retries = 1) {
     try {
       console.log(`[Polygon] GET ${url}`);
       const response = await axios.get(url, {
-        timeout: 4000,
+        timeout: 6000,
         headers: { Authorization: `Bearer ${API_KEY}` },
       });
       return response.data;
     } catch (err) {
+      // Strip Authorization header from error objects before they reach logs
+      if (err.config?.headers) delete err.config.headers.Authorization;
       const isLast = attempt === retries;
       if (isLast) throw err;
       await new Promise((r) => setTimeout(r, 300));

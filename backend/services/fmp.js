@@ -24,11 +24,11 @@ function makeRateLimitError(message) {
 }
 
 // Single attempt with fast timeout. Never retries rate-limit responses.
-async function fetchWithRetry(url, retries = 1) {
+async function fetchWithRetry(url, retries = 1, timeoutMs = 8000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`[FMP] GET ${url.replace(/apikey=[^&]+/, 'apikey=***')}`);
-      const response = await axios.get(url, { timeout: 5000 });
+      const response = await axios.get(url, { timeout: timeoutMs });
 
       // FMP embeds errors in 200 responses
       if (response.data && response.data['Error Message']) {
@@ -56,41 +56,41 @@ async function fetchWithRetry(url, retries = 1) {
 
 // Company profile — name, sector, market cap, description, etc.
 async function fetchCompanyProfile(ticker) {
-  const url = `${BASE_URL}/profile?symbol=${ticker}&apikey=${API_KEY}`;
+  const url = `${BASE_URL}/profile?symbol=${encodeURIComponent(ticker)}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 
 // Real-time quote — price, change, 52w high/low, PE, EPS, volume
 async function fetchQuote(ticker) {
-  const url = `${BASE_URL}/quote?symbol=${ticker}&apikey=${API_KEY}`;
+  const url = `${BASE_URL}/quote?symbol=${encodeURIComponent(ticker)}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 
 // Annual income statements (revenue, gross profit, net income, etc.)
 async function fetchIncomeStatement(ticker, limit = 5) {
-  const url = `${BASE_URL}/income-statement?symbol=${ticker}&period=annual&limit=${limit}&apikey=${API_KEY}`;
+  const url = `${BASE_URL}/income-statement?symbol=${encodeURIComponent(ticker)}&period=annual&limit=${limit}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 
 // Annual balance sheets (assets, liabilities, debt, equity)
 async function fetchBalanceSheet(ticker, limit = 5) {
-  const url = `${BASE_URL}/balance-sheet-statement?symbol=${ticker}&period=annual&limit=${limit}&apikey=${API_KEY}`;
+  const url = `${BASE_URL}/balance-sheet-statement?symbol=${encodeURIComponent(ticker)}&period=annual&limit=${limit}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 
 // Annual cash flow statements (operating CF, capex, free cash flow)
 async function fetchCashFlow(ticker, limit = 5) {
-  const url = `${BASE_URL}/cash-flow-statement?symbol=${ticker}&period=annual&limit=${limit}&apikey=${API_KEY}`;
+  const url = `${BASE_URL}/cash-flow-statement?symbol=${encodeURIComponent(ticker)}&period=annual&limit=${limit}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 
-// Daily OHLCV price history — returns { symbol, historical: [...] }
+// Daily OHLCV price history — allow more time; 5Y of daily data is a large payload
 async function fetchHistoricalPrices(ticker, years = 5) {
   const from = new Date();
   from.setFullYear(from.getFullYear() - years);
   const fromStr = from.toISOString().split('T')[0];
-  const url = `${BASE_URL}/historical-price-eod/full?symbol=${ticker}&from=${fromStr}&apikey=${API_KEY}`;
-  return fetchWithRetry(url);
+  const url = `${BASE_URL}/historical-price-eod/full?symbol=${encodeURIComponent(ticker)}&from=${fromStr}&apikey=${API_KEY}`;
+  return fetchWithRetry(url, 1, 15000); // 15s timeout for large historical datasets
 }
 
 // Ticker search — returns array of { symbol, name, exchangeShortName }
@@ -101,7 +101,7 @@ async function searchTickers(query) {
 
 // Latest news articles for a ticker — v3 endpoint works on free tier
 async function fetchNews(ticker, limit = 10) {
-  const url = `https://financialmodelingprep.com/api/v3/stock_news?tickers=${ticker}&limit=${limit}&apikey=${API_KEY}`;
+  const url = `https://financialmodelingprep.com/api/v3/stock_news?tickers=${encodeURIComponent(ticker)}&limit=${limit}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 

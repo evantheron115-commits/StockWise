@@ -9,7 +9,8 @@ if (missing.length) {
 }
 
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
+const helmet  = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const companyRoutes = require('./routes/company');
@@ -23,6 +24,12 @@ const PORT = process.env.PORT || 4000;
 
 // Trust Railway/Vercel reverse proxy so rate-limiter reads the real client IP
 app.set('trust proxy', 1);
+
+// Security headers — prevents clickjacking, MIME sniffing, XSS, etc.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false, // CSP handled by Next.js frontend
+}));
 
 // Middleware
 function corsOrigin(origin, callback) {
@@ -39,7 +46,7 @@ function corsOrigin(origin, callback) {
   }
 }
 app.use(cors({ origin: corsOrigin, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '16kb' })); // Reject oversized request bodies
 
 // Rate limiting — protect against abuse
 const limiter = rateLimit({

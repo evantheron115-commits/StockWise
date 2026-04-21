@@ -6,7 +6,10 @@ const { getCacheStatus } = require('../utils/cache');
 router.get('/', async (req, res) => {
   let dbStatus = 'ok';
   try {
-    await pool.query('SELECT 1');
+    await Promise.race([
+      pool.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
   } catch {
     dbStatus = 'error';
   }
