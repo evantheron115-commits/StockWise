@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Component, useState, useRef, useEffect } from 'react';
 import { SessionProvider, useSession, signOut } from 'next-auth/react';
+import DisclaimerModal from '../components/DisclaimerModal';
 
 class ErrorBoundary extends Component {
   state = { hasError: false };
@@ -152,9 +153,32 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
             <Component {...pageProps} />
           </ErrorBoundary>
         </main>
-        <footer className="border-t border-white/[0.06] py-5 text-center text-xs text-gray-700">
-          ValuBull · Data from Financial Modeling Prep & Polygon.io · Not financial advice
+
+        <footer
+          role="contentinfo"
+          className="border-t border-white/[0.06] bg-surface-900/60 py-6 mt-4 print:hidden"
+        >
+          <div className="max-w-5xl mx-auto px-4 space-y-3 text-center">
+            <p className="text-xs text-gray-500 leading-relaxed max-w-2xl mx-auto">
+              <strong className="text-gray-400">Disclaimer:</strong> All information provided
+              by ValuBull is for informational and educational purposes only and does not
+              constitute financial advice, investment advice, or any other type of advice.
+              Past performance is not indicative of future results. Consult a qualified
+              financial professional before making any investment decision.
+            </p>
+            <div className="flex items-center justify-center gap-4 text-xs text-gray-700">
+              <Link href="/terms" className="hover:text-gray-400 transition-colors">
+                Terms of Use
+              </Link>
+              <span aria-hidden="true">·</span>
+              <span>Data: Financial Modeling Prep &amp; Polygon.io</span>
+              <span aria-hidden="true">·</span>
+              <span>© {new Date().getFullYear()} ValuBull</span>
+            </div>
+          </div>
         </footer>
+
+        <DisclaimerModal />
       </div>
     </SessionProvider>
   );
