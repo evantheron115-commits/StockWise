@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const companyRoutes = require('./routes/company');
 const healthRoutes  = require('./routes/health');
 const authRoutes    = require('./routes/auth');
+const autoMigrate   = require('./db/autoMigrate');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -80,6 +81,6 @@ function startServer(port, attempt = 0) {
   });
 }
 
-startServer(BASE_PORT);
+autoMigrate().then(() => startServer(BASE_PORT));
 
 module.exports = app;
