@@ -122,7 +122,10 @@ function TrendRow({ label, values }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function KeyRatios({ financials, company }) {
-  const ratios = useMemo(() => computeRatios(financials, company), [financials, company]);
+  const ratios = useMemo(() => {
+    try { return computeRatios(financials, company); }
+    catch { return null; }
+  }, [financials, company]);
 
   if (!financials) {
     return (

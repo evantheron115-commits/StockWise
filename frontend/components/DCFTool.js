@@ -187,7 +187,7 @@ export default function DCFTool({ ticker, currentPrice }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.steps.projectedFlows.map((f, i) => {
+                  {(result.steps.projectedFlows || []).map((f, i) => {
                     const cumPV = result.steps.projectedFlows
                       .slice(0, i + 1)
                       .reduce((s, x) => s + x.presentValue, 0);

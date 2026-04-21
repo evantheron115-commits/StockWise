@@ -71,7 +71,12 @@ export default function FinancialTable({ financials }) {
   const rows = ROW_MAP[tab];
   const years = financials[tab] || [];
   // Newest year first
-  const sorted = [...years].sort((a, b) => b.date?.localeCompare(a.date));
+  const sorted = [...years].sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return b.date.localeCompare(a.date);
+  });
 
   return (
     <div className="card mb-6">

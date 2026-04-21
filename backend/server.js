@@ -17,7 +17,7 @@ app.set('trust proxy', 1);
 // Middleware
 const allowedOrigins = process.env.FRONTEND_URL
   ? [process.env.FRONTEND_URL, 'http://localhost:3000']
-  : true; // allow all in dev/fallback
+  : ['http://localhost:3000', 'http://localhost:3001'];
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
@@ -31,10 +31,19 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
+// Strict rate limit for auth endpoints — prevents brute-force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many auth attempts. Please wait 15 minutes and try again.' },
+});
+
 // Routes
 app.use('/api/health',  healthRoutes);
 app.use('/api/company', companyRoutes);
-app.use('/api/auth',    authRoutes);
+app.use('/api/auth',    authLimiter, authRoutes);
 
 // 404 handler
 app.use((req, res) => {

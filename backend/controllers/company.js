@@ -54,6 +54,11 @@ async function getCompany(req, res) {
         }
 
         const c = normalizeCompany(profileData);
+        if (!c) {
+          const e = new Error(`Ticker "${ticker}" not found.`);
+          e.status = 404;
+          throw e;
+        }
         if (quoteData && quoteData.length) {
           const q = quoteData[0];
           c.price         = q.price            ?? c.price;

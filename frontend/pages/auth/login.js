@@ -6,7 +6,9 @@ import Head from 'next/head';
 
 export default function Login() {
   const router = useRouter();
-  const callbackUrl = router.query.callbackUrl || '/';
+  // Validate callbackUrl to prevent open redirect — only allow relative paths
+  const rawCallback = router.query.callbackUrl || '/';
+  const callbackUrl = rawCallback.startsWith('/') && !rawCallback.startsWith('//') ? rawCallback : '/';
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
