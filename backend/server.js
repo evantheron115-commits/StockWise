@@ -15,10 +15,20 @@ const PORT = process.env.PORT || 4000;
 app.set('trust proxy', 1);
 
 // Middleware
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL, 'http://localhost:3000']
-  : ['http://localhost:3000', 'http://localhost:3001'];
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+function corsOrigin(origin, callback) {
+  const allowed = [
+    process.env.FRONTEND_URL,
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ].filter(Boolean);
+  // Allow requests with no origin (server-to-server) and Vercel preview/prod domains
+  if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
+    callback(null, true);
+  } else {
+    callback(new Error('Not allowed by CORS'));
+  }
+}
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 
 // Rate limiting — protect against abuse
