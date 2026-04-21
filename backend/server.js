@@ -1,4 +1,13 @@
 require('dotenv').config();
+
+// Fail fast if critical env vars are missing
+const REQUIRED_ENV = ['DATABASE_URL', 'FMP_API_KEY'];
+const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missing.length) {
+  console.error(`[Startup] Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');

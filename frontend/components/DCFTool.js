@@ -70,7 +70,7 @@ export default function DCFTool({ ticker, currentPrice }) {
   }
 
   const iv = result?.results?.intrinsicValuePerShare;
-  const margin = iv && currentPrice
+  const margin = iv != null && currentPrice > 0
     ? ((iv - currentPrice) / currentPrice * 100)
     : null;
 

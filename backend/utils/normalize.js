@@ -57,7 +57,8 @@ function normalizeIncomeStatement(data) {
     const netIncome       = safeNum(d.netIncome);
 
     // Calculate margins from raw numbers (stable API doesn't return ratio fields)
-    const ratio = (num) => revenue ? safeNum((num / revenue).toFixed(4)) : null;
+    // Guard: null / revenue = 0 in JS, which is a silent wrong value — check both
+    const ratio = (num) => (revenue && num != null) ? safeNum((num / revenue).toFixed(4)) : null;
 
     return {
       date:               safeStr(d.date),

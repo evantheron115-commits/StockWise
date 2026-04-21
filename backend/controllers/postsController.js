@@ -1,6 +1,8 @@
 'use strict';
 const db = require('../db/queries');
 
+const MAX_POST_LENGTH = 1000;
+
 async function getPosts(req, res) {
   const ticker = req.params.ticker.toUpperCase();
   try {
@@ -24,8 +26,8 @@ async function createPost(req, res) {
   if (!content || !content.trim()) {
     return res.status(400).json({ error: 'Post content is required.' });
   }
-  if (content.length > 1000) {
-    return res.status(400).json({ error: 'Post must be under 1000 characters.' });
+  if (content.length > MAX_POST_LENGTH) {
+    return res.status(400).json({ error: `Post must be under ${MAX_POST_LENGTH} characters.` });
   }
 
   try {

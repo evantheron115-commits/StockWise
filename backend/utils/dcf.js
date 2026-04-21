@@ -36,8 +36,9 @@ function calculateDCF({
   }
 
   // Step 2 — Terminal value (Gordon Growth Model)
+  // Clamp denominator to avoid floating-point near-zero division
   const lastFCF = projectedFlows[projectedFlows.length - 1].projectedFCF;
-  const terminalValue = (lastFCF * (1 + terminalGrowth)) / (discountRate - terminalGrowth);
+  const terminalValue = (lastFCF * (1 + terminalGrowth)) / Math.max(discountRate - terminalGrowth, 0.0001);
   const terminalValuePV = terminalValue / Math.pow(1 + discountRate, forecastYears);
 
   // Step 3 — Enterprise value

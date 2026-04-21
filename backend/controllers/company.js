@@ -19,10 +19,21 @@ function sendRateLimit(res) {
   });
 }
 
+// Reject obviously invalid tickers before hitting external APIs
+const TICKER_RE = /^[A-Z0-9]{1,10}$/;
+function validateTicker(ticker, res) {
+  if (!TICKER_RE.test(ticker)) {
+    res.status(400).json({ error: 'Invalid ticker symbol.' });
+    return false;
+  }
+  return true;
+}
+
 // ── GET /api/company/:ticker ───────────────────────────────────────────────────
 
 async function getCompany(req, res) {
-  const ticker   = req.params.ticker.toUpperCase();
+  const ticker = req.params.ticker.toUpperCase();
+  if (!validateTicker(ticker, res)) return;
   const cacheKey = `company:${ticker}`;
 
   try {
@@ -118,7 +129,8 @@ async function getCompany(req, res) {
 // ── GET /api/company/:ticker/financials ────────────────────────────────────────
 
 async function getFinancials(req, res) {
-  const ticker   = req.params.ticker.toUpperCase();
+  const ticker = req.params.ticker.toUpperCase();
+  if (!validateTicker(ticker, res)) return;
   const cacheKey = `financials:${ticker}`;
 
   try {
@@ -178,8 +190,9 @@ async function getFinancials(req, res) {
 // ── GET /api/company/:ticker/chart ─────────────────────────────────────────────
 
 async function getChart(req, res) {
-  const ticker   = req.params.ticker.toUpperCase();
-  const years    = Math.min(parseInt(req.query.years) || 5, 10);
+  const ticker = req.params.ticker.toUpperCase();
+  if (!validateTicker(ticker, res)) return;
+  const years  = Math.min(parseInt(req.query.years) || 5, 10);
   const cacheKey = `chart:${ticker}:${years}y`;
 
   try {
@@ -224,12 +237,14 @@ async function getChart(req, res) {
 // ── POST /api/company/:ticker/dcf ──────────────────────────────────────────────
 
 async function runDCF(req, res) {
-  const ticker       = req.params.ticker.toUpperCase();
-  const rawBody      = req.body;
-  const growthRate   = parseFloat(rawBody.growthRate)     || 0.1;
-  const discountRate = parseFloat(rawBody.discountRate)   || 0.1;
-  const termGrowth   = parseFloat(rawBody.terminalGrowth) || 0.03;
-  const forecastYrs  = Math.min(Math.max(1, parseInt(rawBody.forecastYears) || 10), 50);
+  const ticker = req.params.ticker.toUpperCase();
+  if (!validateTicker(ticker, res)) return;
+
+  const rawBody = req.body;
+  const growthRate   = Math.min(Math.max(parseFloat(rawBody.growthRate)     || 0.10, -0.50), 1.00);
+  const discountRate = Math.min(Math.max(parseFloat(rawBody.discountRate)   || 0.10,  0.01), 1.00);
+  const termGrowth   = Math.min(Math.max(parseFloat(rawBody.terminalGrowth) || 0.03, -0.10), 0.50);
+  const forecastYrs  = Math.min(Math.max(parseInt(rawBody.forecastYears)    || 10,   1),    50);
 
   try {
     // Reuse cached financials if available — avoids extra FMP calls
@@ -288,8 +303,9 @@ async function runDCF(req, res) {
 // ── GET /api/company/:ticker/news ─────────────────────────────────────────────
 
 async function getNews(req, res) {
-  const ticker   = req.params.ticker.toUpperCase();
-  const limit    = Math.min(parseInt(req.query.limit) || 10, 20);
+  const ticker = req.params.ticker.toUpperCase();
+  if (!validateTicker(ticker, res)) return;
+  const limit  = Math.min(parseInt(req.query.limit) || 10, 20);
   const cacheKey = `news:${ticker}`;
 
   try {
@@ -337,7 +353,7 @@ function friendlyExchange(raw) {
 // ── GET /api/company/search?q= ─────────────────────────────────────────────────
 
 async function searchCompanies(req, res) {
-  const query = req.query.q;
+  const query = (req.query.q || '').trim().slice(0, 50);
   if (!query || query.length < 1) {
     return res.status(400).json({ error: 'Query parameter "q" is required.' });
   }
