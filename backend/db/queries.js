@@ -144,9 +144,34 @@ async function upsertOAuthUser({ email, name, avatar, provider }) {
   return rows[0];
 }
 
+// ── Posts ─────────────────────────────────────────────────────────────────────
+
+async function createPost({ ticker, userId, userName, content }) {
+  const { rows } = await pool.query(
+    `INSERT INTO posts (ticker, user_id, user_name, content)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, ticker, user_name, content, created_at`,
+    [ticker.toUpperCase(), userId || null, userName || 'Anonymous', content]
+  );
+  return rows[0];
+}
+
+async function getPostsByTicker(ticker, limit = 50) {
+  const { rows } = await pool.query(
+    `SELECT id, user_name, content, created_at
+     FROM posts
+     WHERE ticker = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [ticker.toUpperCase(), limit]
+  );
+  return rows;
+}
+
 module.exports = {
   upsertCompany, getCompanyFromDB,
   upsertFinancials, getFinancialsFromDB,
   upsertPrices, getPricesFromDB,
   createUser, getUserByEmail, upsertOAuthUser,
+  createPost, getPostsByTicker,
 };

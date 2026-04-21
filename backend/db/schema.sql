@@ -98,3 +98,15 @@ CREATE TABLE IF NOT EXISTS dcf_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dcf_ticker ON dcf_runs(ticker);
+
+-- Community chat posts
+CREATE TABLE IF NOT EXISTS posts (
+  id         SERIAL PRIMARY KEY,
+  ticker     VARCHAR(20)  NOT NULL,
+  user_id    INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  user_name  VARCHAR(255) NOT NULL DEFAULT 'Anonymous',
+  content    TEXT         NOT NULL,
+  created_at TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_ticker ON posts(ticker, created_at DESC);
