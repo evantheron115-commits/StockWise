@@ -99,9 +99,9 @@ async function searchTickers(query) {
   return fetchWithRetry(url);
 }
 
-// Latest news articles for a ticker
+// Latest news articles for a ticker — v3 endpoint works on free tier
 async function fetchNews(ticker, limit = 10) {
-  const url = `${BASE_URL}/news?tickers=${ticker}&limit=${limit}&apikey=${API_KEY}`;
+  const url = `https://financialmodelingprep.com/api/v3/stock_news?tickers=${ticker}&limit=${limit}&apikey=${API_KEY}`;
   return fetchWithRetry(url);
 }
 

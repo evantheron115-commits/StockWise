@@ -10,17 +10,22 @@ const authRoutes    = require('./routes/auth');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Trust Railway/Vercel reverse proxy so rate-limiter reads the real client IP
+app.set('trust proxy', 1);
+
 // Middleware
 const allowedOrigins = process.env.FRONTEND_URL
   ? [process.env.FRONTEND_URL, 'http://localhost:3000']
   : true; // allow all in dev/fallback
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
 // Rate limiting — protect against abuse
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
 });
 app.use('/api', limiter);
@@ -50,7 +55,7 @@ function startServer(port, attempt = 0) {
   const server = app.listen(port);
 
   server.on('listening', () => {
-    console.log(`\n✅ StockWise backend running on http://localhost:${port}`);
+    console.log(`\n✅ ValuBull backend running on http://localhost:${port}`);
     if (port !== BASE_PORT) {
       console.warn(`⚠️  Started on port ${port} instead of ${BASE_PORT}.`);
       console.warn(`   Update frontend/.env.local → NEXT_PUBLIC_API_URL=http://localhost:${port}`);
