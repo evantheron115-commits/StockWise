@@ -3,3 +3,11 @@ node_modules/
 .env.local
 .next/
 *.log
+
+# Capacitor build output (rebuilt by CI)
+frontend/out/
+
+# iOS derived data (not needed in repo)
+frontend/ios/App/App.xcodeproj/xcuserdata/
+frontend/ios/App/DerivedData/
+*.xcbkptlist

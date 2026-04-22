@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { signIn, getSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Head from 'next/head';
@@ -9,6 +9,11 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 export default function Register() {
   const router = useRouter();
+  const { status } = useSession();
+
+  useEffect(() => {
+    if (status === 'authenticated') router.replace('/');
+  }, [status, router]);
 
   const [name,     setName]     = useState('');
   const [email,    setEmail]    = useState('');
@@ -176,8 +181,3 @@ function GoogleIcon() {
   );
 }
 
-export async function getServerSideProps(context) {
-  const session = await getSession(context);
-  if (session) return { redirect: { destination: '/', permanent: false } };
-  return { props: {} };
-}

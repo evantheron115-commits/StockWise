@@ -1,11 +1,18 @@
-import { useState } from 'react';
-import { signIn, getSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Head from 'next/head';
 
 export default function Login() {
   const router = useRouter();
+  const { status } = useSession();
+
+  // Redirect already-authenticated users (client-side, works in static export)
+  useEffect(() => {
+    if (status === 'authenticated') router.replace('/');
+  }, [status, router]);
+
   // Validate callbackUrl to prevent open redirect — only allow relative paths
   const rawCallback = router.query.callbackUrl || '/';
   const callbackUrl = rawCallback.startsWith('/') && !rawCallback.startsWith('//') ? rawCallback : '/';
@@ -129,8 +136,3 @@ function GoogleIcon() {
   );
 }
 
-export async function getServerSideProps(context) {
-  const session = await getSession(context);
-  if (session) return { redirect: { destination: '/', permanent: false } };
-  return { props: {} };
-}
