@@ -149,7 +149,7 @@ export default function DCFTool({ ticker, currentPrice }) {
               <div className="mt-2 flex items-center justify-center gap-3 text-sm">
                 <span className="text-gray-500">Current price: ${currentPrice?.toFixed(2)}</span>
                 <span className={`font-mono font-medium ${margin >= 0 ? 'up' : 'down'}`}>
-                  {margin >= 0 ? '▲ Undervalued' : '▼ Overvalued'} by {Math.abs(margin).toFixed(1)}%
+                  {margin >= 0 ? '▲ Trading below model value' : '▼ Trading above model value'} by {Math.abs(margin).toFixed(1)}%
                 </span>
               </div>
             )}
@@ -228,9 +228,17 @@ export default function DCFTool({ ticker, currentPrice }) {
             </div>
           </div>
 
-          <p className="text-xs text-gray-700">
-            DCF is based on the most recent annual Free Cash Flow. Results are for informational purposes only and do not constitute financial advice.
-          </p>
+          <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg px-4 py-3">
+            <p className="text-xs text-yellow-600/80 leading-relaxed">
+              <span className="font-semibold text-yellow-500/90">Educational Tool.</span>{' '}
+              This DCF model is based on the most recent reported Free Cash Flow and your custom
+              assumptions. Model outputs are for educational and research purposes only and do
+              not constitute financial advice, investment recommendations, or an offer to buy
+              or sell any security. All assumptions are user-defined; results will vary
+              materially with different inputs. Consult a qualified financial professional
+              before making any investment decision.
+            </p>
+          </div>
         </div>
       )}
     </div>

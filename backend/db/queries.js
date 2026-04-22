@@ -209,6 +209,14 @@ async function isInWatchlist(userId, ticker) {
   return rows.length > 0;
 }
 
+// ── Account management ────────────────────────────────────────────────────────
+
+async function deleteUserAccount(userId) {
+  // watchlist rows auto-delete via CASCADE FK
+  // post user_ids are SET NULL via FK (anonymises posts, does not delete them)
+  await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
 module.exports = {
   upsertCompany, getCompanyFromDB,
   upsertFinancials, getFinancialsFromDB,
@@ -216,4 +224,5 @@ module.exports = {
   createUser, getUserByEmail, upsertOAuthUser,
   createPost, getPostsByTicker,
   getWatchlist, addToWatchlist, removeFromWatchlist, isInWatchlist,
+  deleteUserAccount,
 };

@@ -1,6 +1,7 @@
 'use strict';
 const bcrypt = require('bcryptjs');
-const db = require('../db/queries');
+const jwt    = require('jsonwebtoken');
+const db     = require('../db/queries');
 
 // POST /api/auth/register
 async function register(req, res) {
@@ -50,8 +51,16 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
+    // Issue a JWT for mobile clients (Capacitor stores this in SecureStorage)
+    const token = jwt.sign(
+      { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
+      process.env.NEXTAUTH_SECRET,
+      { expiresIn: '30d' }
+    );
+
     return res.json({
-      user: { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
+      user:  { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
+      token, // mobile clients store this; web clients use NextAuth cookies instead
     });
   } catch (err) {
     console.error('[login]', err.message);
@@ -75,4 +84,21 @@ async function oauthUpsert(req, res) {
   }
 }
 
-module.exports = { register, login, oauthUpsert };
+// DELETE /api/auth/account — hard-delete the authenticated user's account
+// Works from both web proxy (x-api-secret + body.userId) and mobile (Bearer JWT)
+async function deleteAccount(req, res) {
+  // JWT path: userId was extracted by verifyAuth middleware
+  // Secret path: userId forwarded in request body by Next.js proxy
+  const userId = req.userId ?? req.body?.userId;
+  if (!userId) return res.status(400).json({ error: 'userId required.' });
+
+  try {
+    await db.deleteUserAccount(parseInt(userId, 10));
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error('[deleteAccount]', err.message);
+    return res.status(500).json({ error: 'Failed to delete account. Please try again.' });
+  }
+}
+
+module.exports = { register, login, oauthUpsert, deleteAccount };

@@ -84,6 +84,27 @@ function UserMenu() {
             </p>
             <p className="text-[11px] text-gray-600 truncate">{session.user?.email}</p>
           </div>
+          <Link
+            href="/portfolio"
+            onClick={() => setOpen(false)}
+            className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.04] transition-colors"
+          >
+            My Watchlist
+          </Link>
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.04] transition-colors"
+          >
+            Settings
+          </Link>
+          <Link
+            href="/privacy"
+            onClick={() => setOpen(false)}
+            className="block w-full text-left px-4 py-2.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.04] transition-colors border-t border-white/[0.06]"
+          >
+            Privacy Policy
+          </Link>
           <button
             onClick={() => signOut({ callbackUrl: '/' })}
             className="w-full text-left px-4 py-2.5 text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
@@ -156,7 +177,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
       <Head>
         <title>ValuBull — Intelligent Equity Analysis</title>
         <meta name="description" content="Professional stock analysis, DCF valuation, and financial statements." />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <div className="min-h-screen flex flex-col bg-surface-950">
