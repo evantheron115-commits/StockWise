@@ -110,3 +110,14 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_posts_ticker ON posts(ticker, created_at DESC);
+
+-- Watchlist (saved tickers per user)
+CREATE TABLE IF NOT EXISTS watchlist (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ticker     VARCHAR(20)  NOT NULL,
+  added_at   TIMESTAMPTZ  DEFAULT NOW(),
+  UNIQUE(user_id, ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id);

@@ -97,8 +97,9 @@ function UserMenu() {
 }
 
 function Nav() {
-  const router = useRouter();
-  const isHome = router.pathname === '/';
+  const router  = useRouter();
+  const isHome  = router.pathname === '/';
+  const { data: session } = useSession();
 
   return (
     <nav className="border-b border-white/[0.06] bg-surface-900/80 backdrop-blur-md sticky top-0 z-50">
@@ -124,6 +125,18 @@ function Nav() {
               className="text-xs text-gray-500 hover:text-gray-300 transition-colors hidden sm:block"
             >
               ← Search
+            </Link>
+          )}
+          {session && (
+            <Link
+              href="/portfolio"
+              className={`text-xs transition-colors hidden sm:block ${
+                router.pathname === '/portfolio'
+                  ? 'text-brand-400'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Watchlist
             </Link>
           )}
           <span className="text-xs text-gray-700 hidden md:block">

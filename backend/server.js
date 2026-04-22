@@ -13,11 +13,12 @@ const cors    = require('cors');
 const helmet  = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-const companyRoutes = require('./routes/company');
-const healthRoutes  = require('./routes/health');
-const authRoutes    = require('./routes/auth');
-const postsRoutes   = require('./routes/posts');
-const autoMigrate   = require('./db/autoMigrate');
+const companyRoutes   = require('./routes/company');
+const healthRoutes    = require('./routes/health');
+const authRoutes      = require('./routes/auth');
+const postsRoutes     = require('./routes/posts');
+const watchlistRoutes = require('./routes/watchlist');
+const autoMigrate     = require('./db/autoMigrate');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -68,10 +69,11 @@ const authLimiter = rateLimit({
 });
 
 // Routes
-app.use('/api/health',  healthRoutes);
-app.use('/api/company', companyRoutes);
-app.use('/api/auth',    authLimiter, authRoutes);
-app.use('/api/posts',   postsRoutes);
+app.use('/api/health',    healthRoutes);
+app.use('/api/company',   companyRoutes);
+app.use('/api/auth',      authLimiter, authRoutes);
+app.use('/api/posts',     postsRoutes);
+app.use('/api/watchlist', watchlistRoutes);
 
 // 404 handler
 app.use((req, res) => {

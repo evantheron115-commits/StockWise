@@ -168,10 +168,52 @@ async function getPostsByTicker(ticker, limit = 50) {
   return rows;
 }
 
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+async function getWatchlist(userId) {
+  const { rows } = await pool.query(
+    `SELECT w.ticker, w.added_at, c.name
+     FROM watchlist w
+     LEFT JOIN companies c ON c.ticker = w.ticker
+     WHERE w.user_id = $1
+     ORDER BY w.added_at DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+async function addToWatchlist(userId, ticker) {
+  const { rows } = await pool.query(
+    `INSERT INTO watchlist (user_id, ticker)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, ticker) DO NOTHING
+     RETURNING id, ticker, added_at`,
+    [userId, ticker.toUpperCase()]
+  );
+  return rows[0] || null;
+}
+
+async function removeFromWatchlist(userId, ticker) {
+  const { rowCount } = await pool.query(
+    'DELETE FROM watchlist WHERE user_id = $1 AND ticker = $2',
+    [userId, ticker.toUpperCase()]
+  );
+  return rowCount > 0;
+}
+
+async function isInWatchlist(userId, ticker) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM watchlist WHERE user_id = $1 AND ticker = $2',
+    [userId, ticker.toUpperCase()]
+  );
+  return rows.length > 0;
+}
+
 module.exports = {
   upsertCompany, getCompanyFromDB,
   upsertFinancials, getFinancialsFromDB,
   upsertPrices, getPricesFromDB,
   createUser, getUserByEmail, upsertOAuthUser,
   createPost, getPostsByTicker,
+  getWatchlist, addToWatchlist, removeFromWatchlist, isInWatchlist,
 };

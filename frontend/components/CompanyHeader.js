@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import WatchlistButton from './WatchlistButton';
 
 export default function CompanyHeader({ company }) {
   const up = company.changePercent > 0;
@@ -33,18 +34,21 @@ export default function CompanyHeader({ company }) {
           </div>
         </div>
 
-        {/* Right: price */}
-        <div className="text-right">
-          <div className="text-3xl font-mono font-semibold text-white tracking-tight">
-            ${company.price?.toFixed(2) ?? '—'}
-          </div>
-          {company.changePercent != null && (
-            <div className={`text-sm font-mono mt-0.5 ${up ? 'up' : dn ? 'down' : 'neutral'}`}>
-              {up ? '▲' : dn ? '▼' : ''}{' '}
-              {up ? '+' : ''}{company.changePercent?.toFixed(2)}%
-              <span className="text-gray-600 text-xs ml-1">today</span>
+        {/* Right: price + watchlist */}
+        <div className="text-right flex flex-col items-end gap-2">
+          <div>
+            <div className="text-3xl font-mono font-semibold text-white tracking-tight">
+              ${company.price?.toFixed(2) ?? '—'}
             </div>
-          )}
+            {company.changePercent != null && (
+              <div className={`text-sm font-mono mt-0.5 ${up ? 'up' : dn ? 'down' : 'neutral'}`}>
+                {up ? '▲' : dn ? '▼' : ''}{' '}
+                {up ? '+' : ''}{company.changePercent?.toFixed(2)}%
+                <span className="text-gray-600 text-xs ml-1">today</span>
+              </div>
+            )}
+          </div>
+          <WatchlistButton ticker={company.ticker} />
         </div>
       </div>
 
