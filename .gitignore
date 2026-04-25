@@ -11,3 +11,5 @@ frontend/out/
 frontend/ios/App/App.xcodeproj/xcuserdata/
 frontend/ios/App/DerivedData/
 *.xcbkptlist
+
+.vercel

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSession }          from 'next-auth/react';
 import { useRouter }           from 'next/router';
+import { hapticSuccess, hapticLight } from '../lib/haptics';
 
 export default function WatchlistButton({ ticker }) {
   const { data: session } = useSession();
@@ -29,18 +30,16 @@ export default function WatchlistButton({ ticker }) {
     try {
       if (inWatchlist) {
         const r = await fetch(`/api/watchlist/${ticker}`, { method: 'DELETE' });
-        if (r.ok) setInWatchlist(false);
+        if (r.ok) { setInWatchlist(false); hapticLight(); }
       } else {
         const r = await fetch('/api/watchlist', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ ticker }),
         });
-        if (r.ok) setInWatchlist(true);
+        if (r.ok) { setInWatchlist(true); hapticSuccess(); }
       }
-    } catch (e) {
-      console.error('[WatchlistButton]', e);
-    }
+    } catch {}
     setLoading(false);
   }
 

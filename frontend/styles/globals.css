@@ -8,21 +8,18 @@
   body {
     @apply bg-surface-950 text-gray-100 antialiased;
     font-family: 'Inter', system-ui, sans-serif;
-    /* iOS safe area — prevents content from hiding behind notch / Dynamic Island */
     padding-top:    env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left:   env(safe-area-inset-left);
     padding-right:  env(safe-area-inset-right);
   }
 
-  /* Sticky nav must sit above the safe area, not double-count it */
   nav[class*="sticky"] {
     top: env(safe-area-inset-top);
   }
   h1 { @apply text-2xl font-semibold tracking-tight; }
   h2 { @apply text-base font-semibold tracking-tight; }
 
-  /* Scrollbar */
   ::-webkit-scrollbar       { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-surface-600 rounded-full; }
@@ -30,27 +27,54 @@
 
 @layer components {
 
-  /* ── Cards ─────────────────────────────────────────────────────── */
+  /* ── Glassmorphism Cards ──────────────────────────────────────────
+     iOS GPU-accelerates backdrop-filter via Metal — this is safe.
+     Rule: never nest glass inside glass (exponential blur cost).
+     The aurora background layer sits behind all glass cards. ─────── */
   .card {
-    @apply bg-surface-900 border border-white/[0.06] rounded-xl p-5 shadow-card;
+    /* Dot-matrix terminal texture layered over the base fill */
+    background:
+      radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px) center / 20px 20px,
+      rgba(10, 10, 10, 0.75);
+    backdrop-filter:    blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border:             1px solid rgba(255, 255, 255, 0.15);
+    border-radius:      0.75rem;
+    padding:            1.25rem;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.55),
+      inset 0 1px 1px rgba(255, 255, 255, 0.10);
+    /* GPU hint — promotes to composite layer for smooth blur */
+    transform:          translateZ(0);
   }
+
   .card-inner {
-    @apply bg-surface-800 border border-white/[0.05] rounded-lg p-4;
+    background:         rgba(18, 21, 31, 0.60);
+    backdrop-filter:    blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border:             1px solid rgba(255, 255, 255, 0.05);
+    border-radius:      0.5rem;
+    padding:            1rem;
   }
+
   .stat-card {
-    @apply bg-surface-800 border border-white/[0.05] rounded-lg p-4;
-    transition: border-color 0.15s ease;
+    background:         rgba(18, 21, 31, 0.60);
+    border:             1px solid rgba(255, 255, 255, 0.05);
+    border-radius:      0.5rem;
+    padding:            1rem;
+    transition:         border-color 0.15s ease;
+    transform:          translateZ(0);
   }
-  .stat-card:hover {
-    @apply border-white/10;
-  }
+  .stat-card:hover { border-color: rgba(255,255,255,0.10); }
 
   /* ── Inputs ─────────────────────────────────────────────────────── */
   .input-base {
-    @apply bg-surface-800 border border-white/10 rounded-lg px-4 py-2.5
+    @apply bg-surface-800/80 border border-white/10 rounded-lg px-4 py-2.5
            text-gray-100 placeholder-gray-600
            focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50
            transition-colors w-full text-sm;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 
   /* ── Buttons ────────────────────────────────────────────────────── */
@@ -62,11 +86,11 @@
            disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply text-gray-400 hover:text-gray-100 hover:bg-surface-700
+    @apply text-gray-400 hover:text-gray-100 hover:bg-surface-700/60
            px-3 py-1.5 rounded-lg transition-colors text-sm;
   }
   .btn-secondary {
-    @apply bg-surface-700 hover:bg-surface-600 border border-white/10
+    @apply bg-surface-700/80 hover:bg-surface-600/80 border border-white/10
            text-gray-300 hover:text-white font-medium text-sm
            px-4 py-2 rounded-lg transition-colors;
   }
@@ -77,53 +101,121 @@
            border-transparent cursor-pointer transition-all
            hover:text-gray-300 whitespace-nowrap;
   }
-  .tab-active {
-    @apply text-white border-brand-500;
-  }
+  .tab-active { @apply text-white border-brand-500; }
 
   /* ── Value colors ───────────────────────────────────────────────── */
-  .up   { @apply text-emerald-400; }
-  .down { @apply text-red-400; }
+  .up      { @apply text-emerald-400; }
+  .down    { @apply text-red-400; }
   .neutral { @apply text-gray-400; }
 
   /* ── Table ──────────────────────────────────────────────────────── */
-  .data-table {
-    @apply w-full text-sm border-collapse;
-  }
+  .data-table { @apply w-full text-sm border-collapse; }
   .data-table th {
     @apply text-left pb-3 text-xs font-medium text-gray-500 border-b border-white/[0.06];
   }
-  .data-table td {
-    @apply py-2.5 text-sm border-b border-white/[0.04];
-  }
-  .data-table tr:last-child td {
-    @apply border-0;
-  }
-  .data-table tr:hover td {
-    @apply bg-surface-800/50;
-  }
+  .data-table td { @apply py-2.5 text-sm border-b border-white/[0.04]; }
+  .data-table tr:last-child td  { @apply border-0; }
+  .data-table tr:hover td       { @apply bg-surface-800/50; }
 
   /* ── Badge ──────────────────────────────────────────────────────── */
-  .badge {
-    @apply text-xs font-medium px-2 py-0.5 rounded-md;
-  }
-  .badge-blue {
-    @apply bg-brand-500/10 text-brand-400 border border-brand-500/20;
-  }
-  .badge-green {
-    @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
-  }
-  .badge-gray {
-    @apply bg-surface-700 text-gray-400 border border-white/[0.06];
-  }
+  .badge      { @apply text-xs font-medium px-2 py-0.5 rounded-md; }
+  .badge-blue { @apply bg-brand-500/10 text-brand-400 border border-brand-500/20; }
+  .badge-green{ @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20; }
+  .badge-gray { @apply bg-surface-700/80 text-gray-400 border border-white/[0.06]; }
 
-  /* ── Skeleton loader ────────────────────────────────────────────── */
-  .skeleton {
-    @apply bg-surface-700 rounded animate-pulse;
+  /* ── Skeleton & Shimmer ─────────────────────────────────────────── */
+  .skeleton { @apply bg-surface-700/80 rounded animate-pulse; }
+
+  .shimmer {
+    @apply rounded;
+    background: linear-gradient(
+      to right,
+      rgba(18, 21, 31, 0.80) 0%,
+      rgba(30, 35, 51, 0.90) 20%,
+      rgba(18, 21, 31, 0.80) 40%
+    );
+    background-size: 936px 100%;
+    animation: shimmer 1.6s linear infinite;
   }
 
   /* ── Divider ────────────────────────────────────────────────────── */
-  .divider {
-    @apply border-t border-white/[0.06] my-5;
+  .divider { @apply border-t border-white/[0.06] my-5; }
+
+  /* ── Stagger entry — used with CSS var --i ──────────────────────── */
+  .stagger-row {
+    animation: fadeSlideUp 0.32s ease both;
+    animation-delay: calc(var(--i, 0) * 48ms);
   }
+
+  /* ── Neural summary neon glow ──────────────────────────────────── */
+  .neural-text {
+    color: #a5b4fc; /* brand-300 */
+    text-shadow:
+      0 0 12px rgba(99, 102, 241, 0.50),
+      0 0 28px rgba(99, 102, 241, 0.20);
+  }
+}
+
+/* ── Keyframes (outside @layer so they're globally scoped) ─────────── */
+
+@keyframes shimmer {
+  0%   { background-position: -468px 0; }
+  100% { background-position:  468px 0; }
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Aurora orb drift — two opposite phases for organic movement */
+@keyframes aurora-a {
+  0%   { transform: translate(0px,    0px)   scale(1.0); }
+  33%  { transform: translate(60px,  -40px)  scale(1.08); }
+  66%  { transform: translate(-40px,  30px)  scale(0.95); }
+  100% { transform: translate(0px,    0px)   scale(1.0); }
+}
+@keyframes aurora-b {
+  0%   { transform: translate(0px,   0px)   scale(1.0); }
+  33%  { transform: translate(-50px, 35px)  scale(0.93); }
+  66%  { transform: translate(45px, -25px)  scale(1.06); }
+  100% { transform: translate(0px,   0px)   scale(1.0); }
+}
+
+/* Typewriter cursor blink */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* DataStream: financial symbols falling vertically during load */
+@keyframes data-stream {
+  0%   { transform: translateY(-120px); opacity: 0; }
+  8%   { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateY(100vh);  opacity: 0; }
+}
+
+/* CommandPalette: scale page into background to create depth */
+#__next {
+  transition: transform 0.35s cubic-bezier(0.32, 0, 0.67, 0),
+              filter 0.35s ease;
+  will-change: transform, filter;
+}
+body.palette-open #__next {
+  transform: scale(0.96) translateY(10px);
+  filter: blur(3px);
+}
+
+/* CommandPalette light-leak orb: slow breathe + drift */
+@keyframes light-leak {
+  0%   { opacity: 0.6; transform: scale(1.00) translate(0px,   0px); }
+  50%  { opacity: 1.0; transform: scale(1.15) translate(8px,  -8px); }
+  100% { opacity: 0.6; transform: scale(1.00) translate(0px,   0px); }
+}
+
+/* DCF intrinsic value monolith: slow breathing scale */
+@keyframes iv-breathe {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.02); }
 }

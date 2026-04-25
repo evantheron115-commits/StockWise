@@ -20,4 +20,7 @@ router.get('/:ticker/chart', ctrl.getChart);
 // DCF valuation engine
 router.post('/:ticker/dcf', ctrl.runDCF);
 
+// Full-spectrum: company + financials + 1Y chart in one parallel burst
+router.get('/:ticker/full-spectrum', ctrl.getFullSpectrum);
+
 module.exports = router;

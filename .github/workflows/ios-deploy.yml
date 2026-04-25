@@ -1,0 +1,154 @@
+name: iOS → App Store
+
+# Triggers: every push to main, or manually from Actions tab
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  WORKSPACE: frontend/ios/App/App.xcworkspace
+  SCHEME: App
+  BUNDLE_ID: com.valubull.app
+
+jobs:
+  deploy:
+    runs-on: macos-latest
+
+    steps:
+      # ── 1. Source ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Node + web build ──────────────────────────────────────────────────
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build static export (mobile mode)
+        working-directory: frontend
+        env:
+          NEXT_BUILD_TARGET: mobile
+          # Your Railway backend URL — set this secret in GitHub repo settings
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: npm run build
+
+      # ── 3. Capacitor iOS project ─────────────────────────────────────────────
+      # On the very first run the ios/ folder doesn't exist — cap add ios creates
+      # it and then commits it back so future runs just sync instead.
+      - name: Add or sync Capacitor iOS
+        working-directory: frontend
+        run: |
+          if [ ! -d "ios" ]; then
+            echo "ios/ not found — running cap add ios (first-time setup)"
+            npx cap add ios
+            npx cap sync ios
+          else
+            npx cap sync ios
+          fi
+
+      - name: Commit generated iOS project (first run only)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/ios
+          # Only commits if there are staged changes (no-op on subsequent runs)
+          git diff --cached --quiet || git commit -m "chore: add generated Capacitor iOS project [skip ci]"
+          git push || true
+
+      # ── 4. CocoaPods ────────────────────────────────────────────────────────
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: frontend/ios/App/Pods
+          key: pods-${{ hashFiles('frontend/ios/App/Podfile.lock') }}
+          restore-keys: pods-
+
+      - name: Pod install
+        working-directory: frontend/ios/App
+        run: pod install --repo-update
+
+      # ── 5. Code signing ──────────────────────────────────────────────────────
+      - name: Import distribution certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.P12_CERTIFICATE }}
+          p12-password:    ${{ secrets.P12_PASSWORD }}
+
+      - name: Install provisioning profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/dist.mobileprovision
+          # Extract the UUID so xcodebuild can find the profile by ID
+          PROFILE_UUID=$(security cms -D \
+            -i ~/Library/MobileDevice/Provisioning\ Profiles/dist.mobileprovision \
+            | plutil -extract UUID raw -)
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+
+      # ── 6. Build & archive ───────────────────────────────────────────────────
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -workspace "$WORKSPACE" \
+            -scheme     "$SCHEME" \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/ValuBull.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            "CODE_SIGN_IDENTITY=iPhone Distribution" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            -allowProvisioningUpdates \
+            | xcpretty
+
+      # ── 7. Export IPA ────────────────────────────────────────────────────────
+      - name: Export IPA
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${{ env.BUNDLE_ID }}</key>
+              <string>${{ env.PROFILE_UUID }}</string>
+            </dict>
+            <key>stripSwiftSymbols</key><true/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/ValuBull.xcarchive" \
+            -exportPath  "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      # ── 8. Upload to App Store Connect ───────────────────────────────────────
+      - name: Upload to App Store Connect
+        run: |
+          mkdir -p ~/.private_keys
+          echo "${{ secrets.ASC_PRIVATE_KEY }}" \
+            > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+          IPA=$(find "$RUNNER_TEMP/ipa" -name "*.ipa" | head -1)
+          echo "Uploading: $IPA"
+
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$IPA" \
+            --apiKey    "${{ secrets.ASC_KEY_ID }}" \
+            --apiIssuer "${{ secrets.ASC_ISSUER_ID }}" \
+            --verbose

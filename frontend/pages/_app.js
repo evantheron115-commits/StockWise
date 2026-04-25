@@ -5,21 +5,44 @@ import { useRouter } from 'next/router';
 import { Component, useState, useRef, useEffect } from 'react';
 import { SessionProvider, useSession, signOut } from 'next-auth/react';
 import DisclaimerModal from '../components/DisclaimerModal';
+import ConnectionGate from '../components/ConnectionGate';
+import AuroraBackground from '../components/AuroraBackground';
+import StatusSentinel from '../components/StatusSentinel';
+import { IS_NATIVE } from '../lib/mobileAuth';
+
+// Hides the Capacitor splash screen once React has mounted and the session
+// state is known. Without this, a white WebView background flashes between
+// the splash and first render on slower devices.
+function SplashGuard() {
+  const { status } = useSession();
+  const dismissed = useRef(false);
+
+  useEffect(() => {
+    if (dismissed.current || status === 'loading') return;
+    dismissed.current = true;
+    if (!IS_NATIVE) return;
+    import('@capacitor/splash-screen')
+      .then(({ SplashScreen }) => SplashScreen.hide({ fadeOutDuration: 200 }))
+      .catch(() => {});
+  }, [status]);
+
+  return null;
+}
 
 class ErrorBoundary extends Component {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err) {
+    console.error('[ErrorBoundary]', err);
+    // Silently redirect to home after a brief pause so the user sees the
+    // recovery message rather than a jarring instant redirect.
+    setTimeout(() => { window.location.href = '/'; }, 1500);
+  }
   render() {
     if (this.state.hasError) {
       return (
         <div className="max-w-5xl mx-auto px-4 py-16 text-center">
-          <p className="text-red-400 text-sm mb-4">Something went wrong rendering this page.</p>
-          <button
-            onClick={() => { this.setState({ hasError: false }); window.history.back(); }}
-            className="btn-primary inline-block"
-          >
-            ← Go Back
-          </button>
+          <p className="text-gray-600 text-xs font-mono animate-pulse">Recovering…</p>
         </div>
       );
     }
@@ -106,7 +129,16 @@ function UserMenu() {
             Privacy Policy
           </Link>
           <button
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={() => {
+              // Wipe all local snapshots and recent history so the next user
+              // of this device starts clean (App Store privacy requirement).
+              try {
+                Object.keys(localStorage)
+                  .filter(k => k.startsWith('valubull_'))
+                  .forEach(k => localStorage.removeItem(k));
+              } catch {}
+              signOut({ callbackUrl: '/' });
+            }}
             className="w-full text-left px-4 py-2.5 text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           >
             Sign Out
@@ -160,6 +192,7 @@ function Nav() {
               Watchlist
             </Link>
           )}
+          <StatusSentinel />
           <span className="text-xs text-gray-700 hidden md:block">
             Not financial advice
           </span>
@@ -174,46 +207,50 @@ function Nav() {
 export default function App({ Component, pageProps: { session, ...pageProps } }) {
   return (
     <SessionProvider session={session}>
-      <Head>
-        <title>ValuBull — Intelligent Equity Analysis</title>
-        <meta name="description" content="Professional stock analysis, DCF valuation, and financial statements." />
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      <div className="min-h-screen flex flex-col bg-surface-950">
-        <Nav />
-        <main className="flex-1">
-          <ErrorBoundary>
-            <Component {...pageProps} />
-          </ErrorBoundary>
-        </main>
+      <SplashGuard />
+      <ConnectionGate>
+        <Head>
+          <title>ValuBull — Intelligent Equity Analysis</title>
+          <meta name="description" content="Professional stock analysis, DCF valuation, and financial statements." />
+          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+          <link rel="icon" href="/favicon.ico" />
+        </Head>
+        <div className="min-h-screen flex flex-col bg-surface-950" style={{ position: 'relative', zIndex: 1 }}>
+          <AuroraBackground />
+          <Nav />
+          <main className="flex-1">
+            <ErrorBoundary>
+              <Component {...pageProps} />
+            </ErrorBoundary>
+          </main>
 
-        <footer
-          role="contentinfo"
-          className="border-t border-white/[0.06] bg-surface-900/60 py-6 mt-4 print:hidden"
-        >
-          <div className="max-w-5xl mx-auto px-4 space-y-3 text-center">
-            <p className="text-xs text-gray-500 leading-relaxed max-w-2xl mx-auto">
-              <strong className="text-gray-400">Disclaimer:</strong> All information provided
-              by ValuBull is for informational and educational purposes only and does not
-              constitute financial advice, investment advice, or any other type of advice.
-              Past performance is not indicative of future results. Consult a qualified
-              financial professional before making any investment decision.
-            </p>
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-700">
-              <Link href="/terms" className="hover:text-gray-400 transition-colors">
-                Terms of Use
-              </Link>
-              <span aria-hidden="true">·</span>
-              <span>Data: Financial Modeling Prep &amp; Polygon.io</span>
-              <span aria-hidden="true">·</span>
-              <span>© {new Date().getFullYear()} ValuBull</span>
+          <footer
+            role="contentinfo"
+            className="border-t border-white/[0.06] bg-surface-900/60 py-6 mt-4 print:hidden"
+          >
+            <div className="max-w-5xl mx-auto px-4 space-y-3 text-center">
+              <p className="text-xs text-gray-500 leading-relaxed max-w-2xl mx-auto">
+                <strong className="text-gray-400">Disclaimer:</strong> All information provided
+                by ValuBull is for informational and educational purposes only and does not
+                constitute financial advice, investment advice, or any other type of advice.
+                Past performance is not indicative of future results. Consult a qualified
+                financial professional before making any investment decision.
+              </p>
+              <div className="flex items-center justify-center gap-4 text-xs text-gray-700">
+                <Link href="/terms" className="hover:text-gray-400 transition-colors">
+                  Terms of Use
+                </Link>
+                <span aria-hidden="true">·</span>
+                <span>Data: Financial Modeling Prep &amp; Polygon.io</span>
+                <span aria-hidden="true">·</span>
+                <span>© {new Date().getFullYear()} ValuBull</span>
+              </div>
             </div>
-          </div>
-        </footer>
+          </footer>
 
-        <DisclaimerModal />
-      </div>
+          <DisclaimerModal />
+        </div>
+      </ConnectionGate>
     </SessionProvider>
   );
 }

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useSpatialHaptic } from '../lib/useSpatialHaptic';
+import { hapticLight } from '../lib/haptics';
 
 const TABS = [
   { key: 'income',   label: 'Income Statement' },
@@ -63,9 +65,16 @@ function growthColor(curr, prev) {
 
 export default function FinancialTable({ financials }) {
   const [tab, setTab] = useState('income');
+  const cardRef = useSpatialHaptic(0.15);
+
+  function handleTabChange(key) {
+    if (key === tab) return;
+    hapticLight();
+    setTab(key);
+  }
 
   if (!financials) return (
-    <div className="card mb-6 text-sm text-gray-600">Financial data unavailable.</div>
+    <div className="card mb-6 text-sm text-gray-600" ref={cardRef}>Financial data unavailable.</div>
   );
 
   const rows = ROW_MAP[tab];
@@ -79,13 +88,13 @@ export default function FinancialTable({ financials }) {
   });
 
   return (
-    <div className="card mb-6">
+    <div className="card mb-6" ref={cardRef}>
       {/* Tabs */}
       <div className="flex border-b border-gray-800 mb-5 gap-1 overflow-x-auto">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
+            onClick={() => handleTabChange(key)}
             className={`tab whitespace-nowrap ${tab === key ? 'tab-active' : ''}`}
           >
             {label}
@@ -111,10 +120,11 @@ export default function FinancialTable({ financials }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ key, label, bold, ...fmtOpts }) => (
+              {rows.map(({ key, label, bold, ...fmtOpts }, i) => (
                 <tr
                   key={key}
-                  className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors"
+                  className="stagger-row border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors"
+                  style={{ '--i': i }}
                 >
                   <td className={`py-2.5 text-xs ${bold ? 'text-gray-200 font-medium' : 'text-gray-500'}`}>
                     {label}

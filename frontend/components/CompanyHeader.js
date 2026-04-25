@@ -4,6 +4,11 @@ import WatchlistButton from './WatchlistButton';
 export default function CompanyHeader({ company }) {
   const up = company.changePercent > 0;
   const dn = company.changePercent < 0;
+
+  const capTier = company.marketCap >= 500e9 ? 'font-bold'
+                : company.marketCap >= 100e9 ? 'font-semibold'
+                : 'font-medium';
+
   const priceRange = company.high52w - company.low52w;
   const pricePct = priceRange > 0
     ? Math.max(2, Math.min(98, ((company.price - company.low52w) / priceRange) * 100))
@@ -37,8 +42,22 @@ export default function CompanyHeader({ company }) {
         {/* Right: price + watchlist */}
         <div className="text-right flex flex-col items-end gap-2">
           <div>
-            <div className="text-3xl font-mono font-semibold text-white tracking-tight">
-              ${company.price?.toFixed(2) ?? '—'}
+            <div className="relative inline-block">
+              <div
+                aria-hidden
+                className="absolute rounded-full pointer-events-none"
+                style={{
+                  inset: '-8px -20px',
+                  background: 'radial-gradient(ellipse, rgba(99,102,241,0.16) 0%, transparent 70%)',
+                  animation: 'light-leak 4s ease-in-out infinite',
+                }}
+              />
+              <div
+                className="text-3xl font-mono font-extrabold text-white relative"
+                style={{ textShadow: '0 0 15px rgba(99,102,241,0.50)', letterSpacing: '-0.05em' }}
+              >
+                ${company.price?.toFixed(2) ?? '—'}
+              </div>
             </div>
             {company.changePercent != null && (
               <div className={`text-sm font-mono mt-0.5 ${up ? 'up' : dn ? 'down' : 'neutral'}`}>

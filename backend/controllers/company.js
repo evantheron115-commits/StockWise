@@ -12,14 +12,12 @@ const {
 const { calculateDCF } = require('../utils/dcf');
 const db = require('../db/queries');
 
-// Shared rate-limit response — keeps all endpoints consistent
 function sendRateLimit(res) {
   return res.status(429).json({
     error: 'FMP API rate limit reached. Please wait a few minutes and try again.',
   });
 }
 
-// Reject obviously invalid tickers before hitting external APIs
 const TICKER_RE = /^[A-Z0-9]{1,10}$/;
 function validateTicker(ticker, res) {
   if (!TICKER_RE.test(ticker)) {
@@ -29,96 +27,164 @@ function validateTicker(ticker, res) {
   return true;
 }
 
+// ── Private data-fetching helpers ─────────────────────────────────────────────
+// Each helper is self-contained: checks its own cache, deduplicates concurrent
+// requests, falls back to the DB, and writes through to cache on success.
+// Route handlers and getFullSpectrum both delegate to these.
+
+async function _fetchCompany(ticker) {
+  const cacheKey = `company:${ticker}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return { data: cached, source: 'cache' };
+
+  const company = await withDedup(cacheKey, async () => {
+    try {
+      const [profileData, quoteData] = await Promise.all([
+        fmp.fetchCompanyProfile(ticker),
+        fmp.fetchQuote(ticker),
+      ]);
+
+      if (!profileData?.length) {
+        const dbRow = await db.getCompanyFromDB(ticker);
+        if (dbRow) { await setCache(cacheKey, dbRow, TTL.COMPANY); return dbRow; }
+        const e = new Error(`Ticker "${ticker}" not found.`);
+        e.status = 404;
+        throw e;
+      }
+
+      const c = normalizeCompany(profileData);
+      if (!c) {
+        const e = new Error(`Ticker "${ticker}" not found.`);
+        e.status = 404;
+        throw e;
+      }
+
+      if (quoteData?.length) {
+        const q = quoteData[0];
+        c.price         = q.price            ?? c.price;
+        c.change        = q.change            ?? null;
+        c.changePercent = q.changesPercentage ?? null;
+        c.high52w       = q.yearHigh          ?? null;
+        c.low52w        = q.yearLow           ?? null;
+        c.avgVolume     = q.avgVolume         ?? null;
+        c.peRatio       = q.pe                ?? null;
+        c.eps           = q.eps               ?? null;
+
+        // Sanity-check P/E: API occasionally returns 0, negative, or
+        // astronomically wrong values for unprofitable/special companies.
+        // When the raw value looks like an outlier, recompute from price/EPS.
+        if (c.peRatio !== null && (c.peRatio <= 0 || c.peRatio > 5000)) {
+          c.peRatio = (c.price > 0 && c.eps > 0) ? +(c.price / c.eps).toFixed(2) : null;
+        }
+      }
+
+      try {
+        const prevClose = await polygon.fetchPreviousClose(ticker);
+        if (prevClose?.resultsCount > 0) {
+          const p = prevClose.results[0];
+          c.prevClose = p.c ?? null;
+          c.openPrice = p.o ?? null;
+          c.dayHigh   = p.h ?? null;
+          c.dayLow    = p.l ?? null;
+          c.volume    = p.v ?? null;
+        }
+      } catch { /* Polygon down — FMP data is sufficient */ }
+
+      db.upsertCompany(c).catch((e) => console.error('[DB] upsertCompany:', e.message));
+      await setCache(cacheKey, c, TTL.COMPANY);
+      return c;
+
+    } catch (apiErr) {
+      if (apiErr.isRateLimit || apiErr.status === 404) throw apiErr;
+      console.warn(`[_fetchCompany] API error for ${ticker}, trying DB:`, apiErr.message);
+      const dbRow = await db.getCompanyFromDB(ticker);
+      if (dbRow) { await setCache(cacheKey, dbRow, TTL.COMPANY); return dbRow; }
+      throw apiErr;
+    }
+  });
+
+  return { data: company, source: 'api' };
+}
+
+async function _fetchFinancials(ticker) {
+  const cacheKey = `financials:${ticker}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return { data: cached, source: 'cache' };
+
+  const data = await withDedup(cacheKey, async () => {
+    try {
+      const [incomeRaw, balanceRaw, cashflowRaw] = await Promise.all([
+        fmp.fetchIncomeStatement(ticker, 5),
+        fmp.fetchBalanceSheet(ticker, 5),
+        fmp.fetchCashFlow(ticker, 5),
+      ]);
+
+      const result = {
+        income:   normalizeIncomeStatement(incomeRaw),
+        balance:  normalizeBalanceSheet(balanceRaw),
+        cashflow: normalizeCashFlow(cashflowRaw),
+      };
+
+      const allRows = [
+        ...result.income.map((r)   => ({ ...r, period: r.period || 'FY' })),
+        ...result.balance.map((r)  => ({ ...r, period: r.period || 'FY' })),
+        ...result.cashflow.map((r) => ({ ...r, period: r.period || 'FY' })),
+      ];
+      db.upsertFinancials(ticker, allRows).catch((e) =>
+        console.error('[DB] upsertFinancials:', e.message)
+      );
+      await setCache(cacheKey, result, TTL.FINANCIALS);
+      return result;
+
+    } catch (apiErr) {
+      if (apiErr.isRateLimit) throw apiErr;
+      console.warn(`[_fetchFinancials] API error for ${ticker}, trying DB:`, apiErr.message);
+      const rows = await db.getFinancialsFromDB(ticker);
+      if (rows.length) { await setCache(cacheKey, rows, TTL.FINANCIALS); return rows; }
+      throw apiErr;
+    }
+  });
+
+  return { data, source: 'api' };
+}
+
+async function _fetchChart(ticker, years = 1) {
+  const cacheKey = `chart:${ticker}:${years}y`;
+  const cached = await getCache(cacheKey);
+  if (cached) return { data: cached, source: 'cache' };
+
+  const data = await withDedup(cacheKey, async () => {
+    try {
+      const raw    = await fmp.fetchHistoricalPrices(ticker, years);
+      const result = normalizeHistoricalPrices(raw);
+      db.upsertPrices(ticker, result).catch((e) =>
+        console.error('[DB] upsertPrices:', e.message)
+      );
+      await setCache(cacheKey, result, TTL.CHART);
+      return result;
+
+    } catch (apiErr) {
+      if (apiErr.isRateLimit) throw apiErr;
+      console.warn(`[_fetchChart] API error for ${ticker}, trying DB:`, apiErr.message);
+      const rows = await db.getPricesFromDB(ticker, years);
+      if (rows.length) { await setCache(cacheKey, rows, TTL.CHART); return rows; }
+      throw apiErr;
+    }
+  });
+
+  return { data, source: 'api' };
+}
+
 // ── GET /api/company/:ticker ───────────────────────────────────────────────────
 
 async function getCompany(req, res) {
   const ticker = req.params.ticker.toUpperCase();
   if (!validateTicker(ticker, res)) return;
-  const cacheKey = `company:${ticker}`;
-
   try {
-    // 1. Cache hit (Redis or in-memory)
-    const cached = await getCache(cacheKey);
-    if (cached) {
-      console.log(`[getCompany] Cache hit: ${ticker}`);
-      return res.json({ source: 'cache', data: cached });
-    }
-
-    // 2. Deduplicated upstream fetch — only ONE FMP call fires even if
-    //    multiple requests arrive simultaneously for the same ticker
-    const company = await withDedup(cacheKey, async () => {
-      try {
-        const [profileData, quoteData] = await Promise.all([
-          fmp.fetchCompanyProfile(ticker),
-          fmp.fetchQuote(ticker),
-        ]);
-
-        if (!profileData || !profileData.length) {
-          const dbRow = await db.getCompanyFromDB(ticker);
-          if (dbRow) {
-            await setCache(cacheKey, dbRow, TTL.COMPANY);
-            return dbRow;
-          }
-          const e = new Error(`Ticker "${ticker}" not found.`);
-          e.status = 404;
-          throw e;
-        }
-
-        const c = normalizeCompany(profileData);
-        if (!c) {
-          const e = new Error(`Ticker "${ticker}" not found.`);
-          e.status = 404;
-          throw e;
-        }
-        if (quoteData && quoteData.length) {
-          const q = quoteData[0];
-          c.price         = q.price            ?? c.price;
-          c.change        = q.change            ?? null;
-          c.changePercent = q.changesPercentage ?? null;
-          c.high52w       = q.yearHigh          ?? null;
-          c.low52w        = q.yearLow           ?? null;
-          c.avgVolume     = q.avgVolume         ?? null;
-          c.peRatio       = q.pe                ?? null;
-          c.eps           = q.eps               ?? null;
-        }
-
-        // Polygon enrichment — best-effort, never blocks the response
-        try {
-          const prevClose = await polygon.fetchPreviousClose(ticker);
-          if (prevClose?.resultsCount > 0) {
-            const p = prevClose.results[0];
-            c.prevClose = p.c ?? null;
-            c.openPrice = p.o ?? null;
-            c.dayHigh   = p.h ?? null;
-            c.dayLow    = p.l ?? null;
-            c.volume    = p.v ?? null;
-          }
-        } catch { /* Polygon down — FMP data is sufficient */ }
-
-        db.upsertCompany(c).catch((e) =>
-          console.error('[DB] upsertCompany failed:', e.message)
-        );
-        await setCache(cacheKey, c, TTL.COMPANY);
-        return c;
-
-      } catch (apiErr) {
-        // Propagate rate-limit and 404 immediately — no DB fallback for these
-        if (apiErr.isRateLimit || apiErr.status === 404) throw apiErr;
-
-        console.warn(`[getCompany] API error for ${ticker}, trying DB:`, apiErr.message);
-        const dbRow = await db.getCompanyFromDB(ticker);
-        if (dbRow) {
-          await setCache(cacheKey, dbRow, TTL.COMPANY);
-          return dbRow;
-        }
-        throw apiErr;
-      }
-    });
-
-    return res.json({ source: 'api', data: company });
-
+    const { data, source } = await _fetchCompany(ticker);
+    return res.json({ source, data });
   } catch (err) {
-    if (err.isRateLimit)  return sendRateLimit(res);
+    if (err.isRateLimit)    return sendRateLimit(res);
     if (err.status === 404) return res.status(404).json({ error: err.message });
     console.error(`[getCompany] ${ticker}:`, err.message);
     const detail = process.env.NODE_ENV === 'development' ? err.message : undefined;
@@ -131,55 +197,9 @@ async function getCompany(req, res) {
 async function getFinancials(req, res) {
   const ticker = req.params.ticker.toUpperCase();
   if (!validateTicker(ticker, res)) return;
-  const cacheKey = `financials:${ticker}`;
-
   try {
-    const cached = await getCache(cacheKey);
-    if (cached) {
-      console.log(`[getFinancials] Cache hit: ${ticker}`);
-      return res.json({ source: 'cache', data: cached });
-    }
-
-    const data = await withDedup(cacheKey, async () => {
-      try {
-        const [incomeRaw, balanceRaw, cashflowRaw] = await Promise.all([
-          fmp.fetchIncomeStatement(ticker, 5),
-          fmp.fetchBalanceSheet(ticker, 5),
-          fmp.fetchCashFlow(ticker, 5),
-        ]);
-
-        const result = {
-          income:   normalizeIncomeStatement(incomeRaw),
-          balance:  normalizeBalanceSheet(balanceRaw),
-          cashflow: normalizeCashFlow(cashflowRaw),
-        };
-
-        const allRows = [
-          ...result.income.map((r)   => ({ ...r, period: r.period   || 'FY' })),
-          ...result.balance.map((r)  => ({ ...r, period: r.period   || 'FY' })),
-          ...result.cashflow.map((r) => ({ ...r, period: r.period   || 'FY' })),
-        ];
-        db.upsertFinancials(ticker, allRows).catch((e) =>
-          console.error('[DB] upsertFinancials failed:', e.message)
-        );
-
-        await setCache(cacheKey, result, TTL.FINANCIALS);
-        return result;
-
-      } catch (apiErr) {
-        if (apiErr.isRateLimit) throw apiErr;
-        console.warn(`[getFinancials] API error for ${ticker}, trying DB:`, apiErr.message);
-        const rows = await db.getFinancialsFromDB(ticker);
-        if (rows.length) {
-          await setCache(cacheKey, rows, TTL.FINANCIALS);
-          return rows;
-        }
-        throw apiErr;
-      }
-    });
-
-    return res.json({ source: 'api', data });
-
+    const { data, source } = await _fetchFinancials(ticker);
+    return res.json({ source, data });
   } catch (err) {
     if (err.isRateLimit) return sendRateLimit(res);
     console.error(`[getFinancials] ${ticker}:`, err.message);
@@ -192,45 +212,82 @@ async function getFinancials(req, res) {
 async function getChart(req, res) {
   const ticker = req.params.ticker.toUpperCase();
   if (!validateTicker(ticker, res)) return;
-  const years  = Math.min(parseInt(req.query.years) || 5, 10);
-  const cacheKey = `chart:${ticker}:${years}y`;
-
+  const years = Math.min(parseInt(req.query.years) || 5, 10);
   try {
-    const cached = await getCache(cacheKey);
-    if (cached) {
-      console.log(`[getChart] Cache hit: ${ticker} ${years}Y`);
-      return res.json({ source: 'cache', data: cached });
-    }
-
-    const data = await withDedup(cacheKey, async () => {
-      try {
-        const raw  = await fmp.fetchHistoricalPrices(ticker, years);
-        const result = normalizeHistoricalPrices(raw);
-
-        db.upsertPrices(ticker, result).catch((e) =>
-          console.error('[DB] upsertPrices failed:', e.message)
-        );
-        await setCache(cacheKey, result, TTL.CHART);
-        return result;
-
-      } catch (apiErr) {
-        if (apiErr.isRateLimit) throw apiErr;
-        console.warn(`[getChart] API error for ${ticker}, trying DB:`, apiErr.message);
-        const rows = await db.getPricesFromDB(ticker, years);
-        if (rows.length) {
-          await setCache(cacheKey, rows, TTL.CHART);
-          return rows;
-        }
-        throw apiErr;
-      }
-    });
-
-    return res.json({ source: 'api', data });
-
+    const { data, source } = await _fetchChart(ticker, years);
+    return res.json({ source, data });
   } catch (err) {
     if (err.isRateLimit) return sendRateLimit(res);
     console.error(`[getChart] ${ticker}:`, err.message);
     return res.status(500).json({ error: 'Failed to fetch price history.' });
+  }
+}
+
+// ── GET /api/company/:ticker/full-spectrum ─────────────────────────────────────
+// Fetches company profile, full financials, and 1Y price history in a single
+// parallel burst. Each sub-fetch respects its own cache independently.
+// Financial ratios missing from the API are backfilled from raw statement data.
+
+async function getFullSpectrum(req, res) {
+  const ticker = req.params.ticker.toUpperCase();
+  if (!validateTicker(ticker, res)) return;
+
+  try {
+    const [companyResult, financialsResult, chartResult] = await Promise.allSettled([
+      _fetchCompany(ticker),
+      _fetchFinancials(ticker),
+      _fetchChart(ticker, 1),
+    ]);
+
+    // Company is required — fail fast if it's missing
+    if (companyResult.status === 'rejected') {
+      const err = companyResult.reason;
+      if (err.isRateLimit)    return sendRateLimit(res);
+      if (err.status === 404) return res.status(404).json({ error: err.message });
+      console.error(`[getFullSpectrum] company fetch failed for ${ticker}:`, err.message);
+      return res.status(500).json({ error: 'Failed to fetch stock data.' });
+    }
+
+    const company    = companyResult.value.data;
+    const financials = financialsResult.status === 'fulfilled'
+      ? financialsResult.value.data : null;
+    const chart      = chartResult.status === 'fulfilled'
+      ? chartResult.value.data : null;
+
+    // Backfill valuation ratios the API may not have returned
+    if (company && financials) {
+      const income  = financials.income?.[0]  || {};
+      const balance = financials.balance?.[0] || {};
+
+      const mktCap    = company.marketCap;
+      const revenue   = income.revenue;
+      const equity    = balance.shareholdersEquity;
+      const totalDebt = balance.totalDebt;
+      const cash      = balance.cashAndEquivalents;
+      const ebitda    = income.ebitda;
+
+      if (company.psRatio == null && mktCap && revenue)
+        company.psRatio = mktCap / revenue;
+      if (company.pbRatio == null && mktCap && equity && equity > 0)
+        company.pbRatio = mktCap / equity;
+      if (company.evEbitda == null && mktCap != null && totalDebt != null
+          && cash != null && ebitda && ebitda > 0)
+        company.evEbitda = (mktCap + totalDebt - cash) / ebitda;
+    }
+
+    const allFromCache = [companyResult, financialsResult, chartResult]
+      .filter(r => r.status === 'fulfilled')
+      .every(r => r.value.source === 'cache');
+
+    return res.json({
+      source: allFromCache ? 'cache' : 'api',
+      data: { company, financials, chart },
+    });
+
+  } catch (err) {
+    if (err.isRateLimit) return sendRateLimit(res);
+    console.error(`[getFullSpectrum] ${ticker}:`, err.message);
+    return res.status(500).json({ error: 'Failed to fetch stock data.' });
   }
 }
 
@@ -247,23 +304,13 @@ async function runDCF(req, res) {
   const forecastYrs  = Math.min(Math.max(parseInt(rawBody.forecastYears)    || 10,   1),    50);
 
   try {
-    // Reuse cached financials if available — avoids extra FMP calls
     const cacheKey = `financials:${ticker}`;
     let financials  = await getCache(cacheKey);
 
     if (!financials) {
       try {
-        const [cashflowRaw, balanceRaw, incomeRaw] = await Promise.all([
-          fmp.fetchCashFlow(ticker, 1),
-          fmp.fetchBalanceSheet(ticker, 1),
-          fmp.fetchIncomeStatement(ticker, 1),
-        ]);
-        financials = {
-          cashflow: normalizeCashFlow(cashflowRaw),
-          balance:  normalizeBalanceSheet(balanceRaw),
-          income:   normalizeIncomeStatement(incomeRaw),
-        };
-        await setCache(cacheKey, financials, TTL.FINANCIALS);
+        const { data } = await _fetchFinancials(ticker);
+        financials = data;
       } catch (apiErr) {
         if (apiErr.isRateLimit) return sendRateLimit(res);
         throw apiErr;
@@ -283,11 +330,11 @@ async function runDCF(req, res) {
 
     const result = calculateDCF({
       freeCashFlow,
-      growthRate:       growthRate,
-      discountRate:     discountRate,
-      terminalGrowth:   termGrowth,
-      forecastYears:    forecastYrs,
-      netDebt:          latestBS?.netDebt || 0,
+      growthRate:        growthRate,
+      discountRate:      discountRate,
+      terminalGrowth:    termGrowth,
+      forecastYears:     forecastYrs,
+      netDebt:           latestBS?.netDebt || 0,
       sharesOutstanding: latestIS?.sharesOutstanding || 1,
     });
 
@@ -305,17 +352,14 @@ async function runDCF(req, res) {
 async function getNews(req, res) {
   const ticker = req.params.ticker.toUpperCase();
   if (!validateTicker(ticker, res)) return;
-  const limit  = Math.min(parseInt(req.query.limit) || 10, 20);
+  const limit    = Math.min(parseInt(req.query.limit) || 10, 20);
   const cacheKey = `news:${ticker}`;
 
   try {
     const cached = await getCache(cacheKey);
-    if (cached) {
-      console.log(`[getNews] Cache hit: ${ticker}`);
-      return res.json({ source: 'cache', data: cached });
-    }
+    if (cached) return res.json({ source: 'cache', data: cached });
 
-    const raw = await fmp.fetchNews(ticker, limit);
+    const raw      = await fmp.fetchNews(ticker, limit);
     const articles = (Array.isArray(raw) ? raw : []).slice(0, limit).map((a) => ({
       title:       a.title       || '',
       url:         a.url         || '',
@@ -327,7 +371,6 @@ async function getNews(req, res) {
       image:       a.image       || null,
     }));
 
-    // Cache news for 30 minutes — it updates frequently
     await setCache(cacheKey, articles, 30 * 60);
     return res.json({ source: 'api', data: articles });
 
@@ -376,4 +419,12 @@ async function searchCompanies(req, res) {
   }
 }
 
-module.exports = { getCompany, getFinancials, getChart, runDCF, searchCompanies, getNews };
+module.exports = {
+  getCompany,
+  getFinancials,
+  getChart,
+  getFullSpectrum,
+  runDCF,
+  searchCompanies,
+  getNews,
+};

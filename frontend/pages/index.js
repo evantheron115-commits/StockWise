@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/router';
-import { searchStocks } from '../lib/api';
+import CommandPalette from '../components/CommandPalette';
 
 const MARKETS = [
   {
@@ -25,43 +25,11 @@ const MARKETS = [
   },
 ];
 
-// Exchange badge color
-function exchangeColor(exchange) {
-  if (!exchange) return 'text-gray-600';
-  const e = exchange.toUpperCase();
-  if (e.includes('NASDAQ')) return 'text-blue-400';
-  if (e.includes('NYSE'))   return 'text-emerald-400';
-  if (e.includes('OTC'))    return 'text-amber-400';
-  return 'text-gray-500';
-}
-
 export default function Home() {
-  const [query,       setQuery]       = useState('');
-  const [results,     setResults]     = useState([]);
-  const [loading,     setLoading]     = useState(false);
   const [activeMarket, setActiveMarket] = useState(0);
-  const router      = useRouter();
-  const debounceRef = useRef(null);
+  const router = useRouter();
 
-  const handleSearch = useCallback((value) => {
-    setQuery(value);
-    clearTimeout(debounceRef.current);
-    if (!value.trim()) { setResults([]); return; }
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try { setResults(await searchStocks(value)); }
-      catch { setResults([]); }
-      finally { setLoading(false); }
-    }, 350);
-  }, []);
-
-  const go = (ticker) => {
-    setResults([]);
-    setQuery('');
-    router.push(`/stock/${ticker}`);
-  };
-
-  const showDropdown = results.length > 0 || loading;
+  const go = (ticker) => router.push(`/stock/${ticker}`);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-20">
@@ -83,62 +51,7 @@ export default function Home() {
       </div>
 
       {/* Search */}
-      <div className="relative">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <svg
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none"
-              width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              autoFocus
-              className="input-base pl-10 text-base h-12"
-              placeholder="Ticker or company name..."
-              value={query}
-              onChange={(e) => handleSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && query.trim()) go(query.trim().toUpperCase());
-                if (e.key === 'Escape') { setResults([]); setQuery(''); }
-              }}
-            />
-          </div>
-          <button
-            className="btn-primary h-12 px-6 text-sm font-semibold whitespace-nowrap"
-            onClick={() => query.trim() && go(query.trim().toUpperCase())}
-          >
-            Analyse →
-          </button>
-        </div>
-
-        {/* Dropdown */}
-        {showDropdown && (
-          <div className="absolute top-full mt-2 w-full bg-surface-900 border border-white/[0.08] rounded-xl overflow-hidden shadow-2xl z-20">
-            {loading && (
-              <div className="px-4 py-3 text-sm text-gray-600">Searching...</div>
-            )}
-            {results.map((r) => (
-              <button
-                key={r.ticker}
-                onClick={() => go(r.ticker)}
-                className="w-full text-left px-4 py-3 hover:bg-surface-800 transition-colors flex items-center justify-between border-b border-white/[0.05] last:border-0"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="font-mono font-semibold text-brand-400 text-sm w-16 shrink-0">
-                    {r.ticker}
-                  </span>
-                  <span className="text-gray-300 text-sm truncate">{r.name}</span>
-                </div>
-                <span className={`text-xs shrink-0 ml-2 font-medium ${exchangeColor(r.exchange)}`}>
-                  {r.exchange}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <CommandPalette />
 
       {/* Browse Markets */}
       <div className="mt-12">

@@ -1,5 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { runDCF } from '../lib/api';
+import {
+  hapticSelectionStart, hapticSelectionChanged, hapticSelectionEnd,
+  hapticSuccess, hapticWarning, hapticValueGravity,
+} from '../lib/haptics';
+import NeuralSummary from './NeuralSummary';
+import DCFSensitivityMatrix from './DCFSensitivityMatrix';
 
 const DEFAULT_INPUTS = {
   growthRate:     10,
@@ -17,7 +23,7 @@ function fmtVal(n) {
   return `${sign}$${abs.toLocaleString()}`;
 }
 
-function SliderInput({ label, value, min, max, step, unit, onChange, hint }) {
+function SliderInput({ label, value, min, max, step, unit, onChange, hint, onDragStart, onDragEnd }) {
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
@@ -31,11 +37,29 @@ function SliderInput({ label, value, min, max, step, unit, onChange, hint }) {
         min={min} max={max} step={step}
         value={value}
         onChange={(e) => onChange(+e.target.value)}
+        onPointerDown={onDragStart}
+        onPointerUp={onDragEnd}
         className="w-full accent-brand-500 cursor-pointer"
       />
       {hint && <p className="text-xs text-gray-700 mt-0.5">{hint}</p>}
     </div>
   );
+}
+
+// Client-side DCF formula — mirrors backend utils/dcf.js exactly.
+// Used for real-time IV estimation while sliders are moving.
+function quickCalcIV(baseInputs, liveInputs) {
+  const { freeCashFlow: baseFCF, netDebt, sharesOutstanding: shares } = baseInputs;
+  if (!baseFCF || baseFCF <= 0 || !shares) return null;
+  const g  = liveInputs.growthRate    / 100;
+  const d  = liveInputs.discountRate  / 100;
+  const tg = liveInputs.terminalGrowth / 100;
+  const yr = liveInputs.forecastYears;
+  if (d <= tg) return null;
+  let cash = baseFCF, pv = 0;
+  for (let y = 1; y <= yr; y++) { cash *= (1 + g); pv += cash / Math.pow(1 + d, y); }
+  const tv = (cash * (1 + tg)) / Math.max(d - tg, 0.0001);
+  return (pv + tv / Math.pow(1 + d, yr) - netDebt) / shares;
 }
 
 export default function DCFTool({ ticker, currentPrice }) {
@@ -44,9 +68,46 @@ export default function DCFTool({ ticker, currentPrice }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState(null);
 
-  const set = (key) => (val) => setInputs((prev) => ({ ...prev, [key]: val }));
+  // Tracks last gravity zone — fire haptic only on ZONE ENTRY, not every tick
+  const gravityZone     = useRef('none');
+  // Tracks last value per slider that triggered a haptic — 1-unit friction threshold
+  const lastHapticVals  = useRef({});
+
+  // slider handler: friction haptic (fires only when value crosses 1-unit boundary) + gravity
+  const set = (key) => (val) => {
+    const last = lastHapticVals.current[key];
+    if (last == null || Math.abs(val - last) >= 1) {
+      hapticSelectionChanged();
+      lastHapticVals.current[key] = val;
+    }
+    const next = { ...inputs, [key]: val };
+    if (result?.inputs && currentPrice) {
+      const iv = quickCalcIV(result.inputs, next);
+      if (iv != null) {
+        const margin  = Math.abs(iv - currentPrice) / currentPrice;
+        const newZone = margin <= 0.03  ? 'heavy'
+                      : margin <= 0.10  ? 'medium'
+                      : margin <= 0.25  ? 'light'
+                      : 'none';
+        if (newZone !== gravityZone.current) {
+          gravityZone.current = newZone;
+          if (newZone !== 'none') hapticValueGravity(newZone);
+        }
+      }
+    }
+    setInputs(next);
+  };
+
+  // Prevent the mathematically impossible case (Gordon Growth Model breaks at r ≤ g)
+  const inputError = inputs.terminalGrowth >= inputs.discountRate
+    ? `Terminal growth (${inputs.terminalGrowth}%) must be lower than discount rate (${inputs.discountRate}%). Lower terminal growth or raise the discount rate.`
+    : null;
+
+  // Fire warning haptic when the invalid state is first entered
+  const prevInputError = inputs.terminalGrowth >= inputs.discountRate;
 
   async function handleRun() {
+    if (inputError) { hapticWarning(); return; }
     setLoading(true);
     setError(null);
     setResult(null);
@@ -58,6 +119,7 @@ export default function DCFTool({ ticker, currentPrice }) {
         forecastYears:  inputs.forecastYears,
       });
       setResult(data);
+      hapticSuccess();
     } catch (err) {
       setError(
         err.isRateLimit
@@ -95,6 +157,8 @@ export default function DCFTool({ ticker, currentPrice }) {
           value={inputs.growthRate}
           min={-5} max={40} step={0.5} unit="%"
           onChange={set('growthRate')}
+          onDragStart={hapticSelectionStart}
+          onDragEnd={hapticSelectionEnd}
           hint="Expected annual growth for forecast period"
         />
         <SliderInput
@@ -102,6 +166,8 @@ export default function DCFTool({ ticker, currentPrice }) {
           value={inputs.discountRate}
           min={5} max={20} step={0.5} unit="%"
           onChange={set('discountRate')}
+          onDragStart={hapticSelectionStart}
+          onDragEnd={hapticSelectionEnd}
           hint="Required rate of return / cost of capital"
         />
         <SliderInput
@@ -109,6 +175,8 @@ export default function DCFTool({ ticker, currentPrice }) {
           value={inputs.terminalGrowth}
           min={0} max={5} step={0.5} unit="%"
           onChange={set('terminalGrowth')}
+          onDragStart={hapticSelectionStart}
+          onDragEnd={hapticSelectionEnd}
           hint="Perpetual growth rate after forecast period"
         />
         <SliderInput
@@ -116,13 +184,21 @@ export default function DCFTool({ ticker, currentPrice }) {
           value={inputs.forecastYears}
           min={5} max={20} step={1} unit=" yrs"
           onChange={set('forecastYears')}
+          onDragStart={hapticSelectionStart}
+          onDragEnd={hapticSelectionEnd}
           hint="Number of years to project cash flows"
         />
       </div>
 
+      {inputError && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3 text-sm text-amber-400 mb-4">
+          ⚠ {inputError}
+        </div>
+      )}
+
       <button
         onClick={handleRun}
-        disabled={loading}
+        disabled={loading || !!inputError}
         className="btn-primary w-full mb-5"
       >
         {loading ? 'Calculating...' : 'Run DCF Valuation →'}
@@ -138,11 +214,12 @@ export default function DCFTool({ ticker, currentPrice }) {
         <div className="space-y-5 border-t border-gray-800 pt-5">
 
           {/* Intrinsic value banner */}
-          <div className="bg-gray-800/60 rounded-xl p-5 text-center">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
+          <div className="bg-surface-800/60 border border-gold-500/10 rounded-xl p-5 text-center shadow-glow-gold">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-mono">
               Intrinsic Value per Share
             </p>
-            <p className="text-4xl font-mono font-semibold text-white">
+            <p className="text-4xl font-mono font-black text-gold-400"
+               style={{ letterSpacing: '-0.05em', textShadow: '0 0 20px rgba(99,102,241,0.8)', animation: 'iv-breathe 6s ease-in-out infinite' }}>
               ${iv?.toFixed(2) ?? '—'}
             </p>
             {margin != null && currentPrice && (
@@ -154,6 +231,13 @@ export default function DCFTool({ ticker, currentPrice }) {
               </div>
             )}
           </div>
+
+          <NeuralSummary
+            iv={iv}
+            currentPrice={currentPrice}
+            inputs={inputs}
+            result={result}
+          />
 
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -213,6 +297,13 @@ export default function DCFTool({ ticker, currentPrice }) {
               </table>
             </div>
           </div>
+
+          {/* Sensitivity Matrix — live-updates as sliders move */}
+          <DCFSensitivityMatrix
+            inputs={inputs}
+            result={result}
+            currentPrice={currentPrice}
+          />
 
           {/* Inputs used */}
           <div className="bg-gray-800/30 rounded-lg p-4">

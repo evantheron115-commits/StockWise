@@ -19,22 +19,19 @@ const config: CapacitorConfig = {
 
   plugins: {
     SplashScreen: {
-      launchShowDuration: 1200,
-      backgroundColor:    '#030712', // matches surface-950
-      spinnerColor:       '#4f46e5', // brand-600
-      showSpinner:        false,
-      splashFullScreen:   true,
-      splashImmersive:    true,
-    },
-
-    PushNotifications: {
-      // Will request permission lazily (when user enables price alerts)
-      presentationOptions: ['badge', 'sound', 'alert'],
+      launchShowDuration:  0,          // 0 = don't auto-hide; we call hide() manually
+      launchAutoHide:      false,      // keep splash until SplashScreen.hide() is called
+      backgroundColor:     '#030712', // surface-950 — matches app bg, no flash
+      spinnerColor:        '#4f46e5', // brand-600
+      showSpinner:         false,
+      splashFullScreen:    true,
+      splashImmersive:     true,
+      fadeOutDuration:     200,        // ms for the crossfade into the app
     },
 
     // Biometric auth — Face ID / Touch ID
     BiometricAuth: {
-      // Permission will be requested on first lock-app interaction
+      // Permission requested on first biometric interaction
     },
   },
 };

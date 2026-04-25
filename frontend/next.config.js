@@ -1,12 +1,8 @@
-// ── Build target ──────────────────────────────────────────────────────────────
-// NEXT_BUILD_TARGET controls the output:
-//   (unset / "server") → standard Vercel deployment (default)
-//   "mobile"           → static export for Capacitor iOS build
-//
-// To build for Capacitor: NEXT_BUILD_TARGET=mobile npm run build
 const isMobileBuild = process.env.NEXT_BUILD_TARGET === 'mobile';
 
-// ── Production guard (only enforced for server builds) ───────────────────────
+// Build-time guard — aborts the Vercel build if the API URL is missing or wrong.
+// Not enforced for mobile builds because next.config.js runs on the CI machine,
+// not in the Capacitor WebView.
 if (process.env.NODE_ENV === 'production' && !isMobileBuild) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl || apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
@@ -21,10 +17,17 @@ if (process.env.NODE_ENV === 'production' && !isMobileBuild) {
 const nextConfig = {
   reactStrictMode: false,
 
+  // SWC strips all console.log/warn/info from the mobile bundle at compile time.
+  // console.error is preserved — it surfaces genuine runtime failures.
+  // On web builds this is left off so developers keep their logs during local work.
+  compiler: {
+    removeConsole: isMobileBuild ? { exclude: ['error'] } : false,
+  },
+
   // Static export for Capacitor — API routes are excluded (mobile calls Railway directly)
   ...(isMobileBuild ? {
-    output:   'export',
-    images:   { unoptimized: true }, // required for static export
+    output:        'export',
+    images:        { unoptimized: true },
     trailingSlash: true,
   } : {}),
 };

@@ -1,4 +1,7 @@
 import { useMemo } from 'react';
+import FinancialSkeleton from './FinancialSkeleton';
+import RatioHeatmap from './RatioHeatmap';
+import { useSpatialHaptic } from '../lib/useSpatialHaptic';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,7 +35,6 @@ function div(a, b) {
   return a / b;
 }
 
-// Rate a ratio: returns 'good' | 'ok' | 'weak' | 'neutral'
 function rate(value, { goodAbove, okAbove, goodBelow, okBelow, neutral } = {}) {
   if (value == null || isNaN(value)) return 'neutral';
   if (neutral) return 'neutral';
@@ -70,17 +72,28 @@ function Badge({ rating }) {
 // ── Section component ─────────────────────────────────────────────────────────
 
 function Section({ title, rows }) {
+  const ref = useSpatialHaptic(0.2);
   return (
-    <div className="card">
+    <div className="card" ref={ref}>
       <h3 className="text-sm font-semibold text-white mb-4">{title}</h3>
       <div className="divide-y divide-white/[0.04]">
-        {rows.map(({ label, value, badge, note }) => (
-          <div key={label} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0 gap-3">
+        {rows.map(({ label, value, badge, note, heatmap }, i) => (
+          <div
+            key={label}
+            className="stagger-row flex items-center justify-between py-2.5 first:pt-0 last:pb-0 gap-3"
+            style={{ '--i': i }}
+          >
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-400">{label}</p>
               {note && <p className="text-[10px] text-gray-600 mt-0.5">{note}</p>}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2.5 flex-shrink-0">
+              {/* Heatmap hidden on small screens to keep rows legible */}
+              {heatmap && (
+                <div className="hidden sm:flex">
+                  <RatioHeatmap {...heatmap} />
+                </div>
+              )}
               <span className="font-mono text-sm text-gray-200">{value}</span>
               {badge && <Badge rating={badge} />}
             </div>
@@ -102,16 +115,30 @@ function TrendRow({ label, values }) {
   return (
     <div>
       <p className="text-xs text-gray-500 mb-2">{label}</p>
+      {/* Labels in their own fixed row — zero overlap with bars regardless of bar height */}
+      <div className="flex gap-1 mb-1.5">
+        {values.map((v, i) => (
+          <div key={i} className="flex-1 text-center">
+            {v != null && !isNaN(v) ? (
+              <span className={`text-[9px] font-mono font-medium block leading-tight ${
+                v >= 0 ? 'text-brand-400' : 'text-red-400'
+              }`}>
+                {pct(v)}
+              </span>
+            ) : (
+              <span className="text-[9px] block">&nbsp;</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {/* Bars grow from the bottom */}
       <div className="flex items-end gap-1 h-10">
         {values.map((v, i) => {
-          if (v == null) return <div key={i} className="flex-1 bg-gray-800 rounded-sm h-1" />;
+          if (v == null || isNaN(v)) return <div key={i} className="flex-1 bg-gray-800 rounded-sm h-1" />;
           const height = Math.max(4, Math.abs(v / max) * 40);
           const color  = v >= 0 ? 'bg-brand-500' : 'bg-red-500';
           return (
-            <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1">
-              <span className="text-[9px] text-gray-600">{pct(v)}</span>
-              <div className={`w-full rounded-sm ${color}`} style={{ height: `${height}px` }} />
-            </div>
+            <div key={i} className={`flex-1 rounded-sm ${color}`} style={{ height: `${height}px` }} />
           );
         })}
       </div>
@@ -128,21 +155,7 @@ export default function KeyRatios({ financials, company }) {
   }, [financials, company]);
 
   if (!financials) {
-    return (
-      <div className="space-y-4 mb-6">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="card space-y-3">
-            <div className="skeleton h-4 w-32 mb-4" />
-            {[...Array(4)].map((_, j) => (
-              <div key={j} className="flex justify-between py-2">
-                <div className="skeleton h-3 w-28" />
-                <div className="skeleton h-3 w-16" />
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    );
+    return <FinancialSkeleton />;
   }
 
   if (!ratios) {
@@ -153,82 +166,106 @@ export default function KeyRatios({ financials, company }) {
     );
   }
 
-  const { val, prof, health, cf, trends } = ratios;
+  const { val, prof, health, cf, trends, ranges } = ratios;
+
+  // Helper: return historical heatmap if range available, otherwise benchmark, otherwise null
+  function h(value, historical, benchmark) {
+    if (historical) return { value, ...historical };
+    if (benchmark)  return { value, ...benchmark };
+    return null;
+  }
 
   return (
     <div className="space-y-4 mb-6">
 
-      {/* Valuation */}
+      {/* Valuation — benchmark ranges (no 5Y price history) */}
       <Section
         title="Valuation"
         rows={[
           {
-            label: 'P/E Ratio',
-            value: val.pe != null ? x(val.pe, 1) : '—',
-            badge: rate(val.pe, { goodBelow: 20, okBelow: 35 }),
-            note:  'Price ÷ Earnings per Share',
+            label:   'P/E Ratio',
+            value:   val.pe != null ? x(val.pe, 1) : '—',
+            badge:   rate(val.pe, { goodBelow: 20, okBelow: 35 }),
+            note:    'Price ÷ Earnings per Share',
+            heatmap: val.pe != null ? { value: val.pe, min: 5, max: 60, higherIsBetter: false } : null,
           },
           {
-            label: 'Price / Sales',
-            value: val.ps != null ? x(val.ps, 1) : '—',
-            badge: rate(val.ps, { goodBelow: 3, okBelow: 8 }),
-            note:  'Market Cap ÷ Revenue',
+            label:   'Price / Sales',
+            value:   val.ps != null ? x(val.ps, 1) : '—',
+            badge:   rate(val.ps, { goodBelow: 3, okBelow: 8 }),
+            note:    'Market Cap ÷ Revenue',
+            heatmap: val.ps != null ? { value: val.ps, min: 0, max: 20, higherIsBetter: false } : null,
           },
           {
-            label: 'Price / Book',
-            value: val.pb != null ? x(val.pb, 1) : '—',
-            badge: rate(val.pb, { goodBelow: 3, okBelow: 7 }),
-            note:  'Market Cap ÷ Shareholders\' Equity',
+            label:   'Price / Book',
+            value:   val.pb != null ? x(val.pb, 1) : '—',
+            badge:   rate(val.pb, { goodBelow: 3, okBelow: 7 }),
+            note:    'Market Cap ÷ Shareholders\' Equity',
+            heatmap: val.pb != null ? { value: val.pb, min: 0, max: 15, higherIsBetter: false } : null,
           },
           {
-            label: 'EV / EBITDA',
-            value: val.evEbitda != null ? x(val.evEbitda, 1) : '—',
-            badge: rate(val.evEbitda, { goodBelow: 12, okBelow: 20 }),
-            note:  'Enterprise Value ÷ EBITDA',
+            label:   'EV / EBITDA',
+            value:   val.evEbitda != null ? x(val.evEbitda, 1) : '—',
+            badge:   rate(val.evEbitda, { goodBelow: 12, okBelow: 20 }),
+            note:    'Enterprise Value ÷ EBITDA',
+            heatmap: val.evEbitda != null ? { value: val.evEbitda, min: 0, max: 35, higherIsBetter: false } : null,
           },
           {
-            label: 'Market Cap',
-            value: fmtB(company?.marketCap),
-            badge: null,
+            label:   'Market Cap',
+            value:   fmtB(company?.marketCap),
+            badge:   null,
+            heatmap: null,
           },
         ]}
       />
 
-      {/* Profitability */}
+      {/* Profitability — historical ranges from 5Y financial data */}
       <Section
         title="Profitability"
         rows={[
           {
-            label: 'Gross Margin',
-            value: pct(prof.grossMargin),
-            badge: rate(prof.grossMargin, { goodAbove: 0.40, okAbove: 0.20 }),
+            label:   'Gross Margin',
+            value:   pct(prof.grossMargin),
+            badge:   rate(prof.grossMargin, { goodAbove: 0.40, okAbove: 0.20 }),
+            heatmap: h(prof.grossMargin, ranges.grossMargin,
+                       { min: 0, max: 0.80, higherIsBetter: true }),
           },
           {
-            label: 'Operating Margin',
-            value: pct(prof.opMargin),
-            badge: rate(prof.opMargin, { goodAbove: 0.15, okAbove: 0.05 }),
+            label:   'Operating Margin',
+            value:   pct(prof.opMargin),
+            badge:   rate(prof.opMargin, { goodAbove: 0.15, okAbove: 0.05 }),
+            heatmap: h(prof.opMargin, ranges.opMargin,
+                       { min: -0.05, max: 0.40, higherIsBetter: true }),
           },
           {
-            label: 'Net Profit Margin',
-            value: pct(prof.netMargin),
-            badge: rate(prof.netMargin, { goodAbove: 0.10, okAbove: 0.03 }),
+            label:   'Net Profit Margin',
+            value:   pct(prof.netMargin),
+            badge:   rate(prof.netMargin, { goodAbove: 0.10, okAbove: 0.03 }),
+            heatmap: h(prof.netMargin, ranges.netMargin,
+                       { min: -0.05, max: 0.35, higherIsBetter: true }),
           },
           {
-            label: 'EBITDA Margin',
-            value: pct(prof.ebitdaMargin),
-            badge: rate(prof.ebitdaMargin, { goodAbove: 0.20, okAbove: 0.10 }),
+            label:   'EBITDA Margin',
+            value:   pct(prof.ebitdaMargin),
+            badge:   rate(prof.ebitdaMargin, { goodAbove: 0.20, okAbove: 0.10 }),
+            heatmap: h(prof.ebitdaMargin, ranges.ebitdaMargin,
+                       { min: 0, max: 0.50, higherIsBetter: true }),
           },
           {
-            label: 'Return on Equity (ROE)',
-            value: pct(prof.roe),
-            badge: rate(prof.roe, { goodAbove: 0.15, okAbove: 0.08 }),
-            note:  'Net Income ÷ Shareholders\' Equity',
+            label:   'Return on Equity (ROE)',
+            value:   pct(prof.roe),
+            badge:   rate(prof.roe, { goodAbove: 0.15, okAbove: 0.08 }),
+            note:    'Net Income ÷ Shareholders\' Equity',
+            heatmap: h(prof.roe, ranges.roe,
+                       { min: 0, max: 0.40, higherIsBetter: true }),
           },
           {
-            label: 'Return on Assets (ROA)',
-            value: pct(prof.roa),
-            badge: rate(prof.roa, { goodAbove: 0.07, okAbove: 0.03 }),
-            note:  'Net Income ÷ Total Assets',
+            label:   'Return on Assets (ROA)',
+            value:   pct(prof.roa),
+            badge:   rate(prof.roa, { goodAbove: 0.07, okAbove: 0.03 }),
+            note:    'Net Income ÷ Total Assets',
+            heatmap: h(prof.roa, ranges.roa,
+                       { min: 0, max: 0.20, higherIsBetter: true }),
           },
         ]}
       />
@@ -243,44 +280,52 @@ export default function KeyRatios({ financials, company }) {
             </span>
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-            <TrendRow label="Gross Margin"    values={trends.grossMargins} />
+            <TrendRow label="Gross Margin"     values={trends.grossMargins} />
             <TrendRow label="Operating Margin" values={trends.opMargins} />
-            <TrendRow label="Net Margin"       values={trends.netMargins} />
+            <TrendRow label="Net Margin"        values={trends.netMargins} />
           </div>
         </div>
       )}
 
-      {/* Financial Health */}
+      {/* Financial Health — historical ranges from 5Y balance sheet */}
       <Section
         title="Financial Health"
         rows={[
           {
-            label: 'Current Ratio',
-            value: health.currentRatio != null ? num(health.currentRatio) : '—',
-            badge: rate(health.currentRatio, { goodAbove: 2, okAbove: 1 }),
-            note:  'Current Assets ÷ Current Liabilities',
+            label:   'Current Ratio',
+            value:   health.currentRatio != null ? num(health.currentRatio) : '—',
+            badge:   rate(health.currentRatio, { goodAbove: 2, okAbove: 1 }),
+            note:    'Current Assets ÷ Current Liabilities',
+            heatmap: h(health.currentRatio, ranges.currentRatio,
+                       { min: 0, max: 5, higherIsBetter: true }),
           },
           {
-            label: 'Debt / Equity',
-            value: health.debtEquity != null ? num(health.debtEquity) : '—',
-            badge: rate(health.debtEquity, { goodBelow: 0.5, okBelow: 1.5 }),
-            note:  'Total Debt ÷ Shareholders\' Equity',
+            label:   'Debt / Equity',
+            value:   health.debtEquity != null ? num(health.debtEquity) : '—',
+            badge:   rate(health.debtEquity, { goodBelow: 0.5, okBelow: 1.5 }),
+            note:    'Total Debt ÷ Shareholders\' Equity',
+            heatmap: h(health.debtEquity, ranges.debtEquity,
+                       { min: 0, max: 3, higherIsBetter: false }),
           },
           {
-            label: 'Debt / Assets',
-            value: health.debtAssets != null ? num(health.debtAssets) : '—',
-            badge: rate(health.debtAssets, { goodBelow: 0.3, okBelow: 0.6 }),
+            label:   'Debt / Assets',
+            value:   health.debtAssets != null ? num(health.debtAssets) : '—',
+            badge:   rate(health.debtAssets, { goodBelow: 0.3, okBelow: 0.6 }),
+            heatmap: h(health.debtAssets, ranges.debtAssets,
+                       { min: 0, max: 0.8, higherIsBetter: false }),
           },
           {
-            label: 'Net Debt',
-            value: fmtB(health.netDebt),
-            badge: null,
-            note:  'Total Debt − Cash & Equivalents',
+            label:   'Net Debt',
+            value:   fmtB(health.netDebt),
+            badge:   null,
+            note:    'Total Debt − Cash & Equivalents',
+            heatmap: null,
           },
           {
-            label: 'Cash & Equivalents',
-            value: fmtB(health.cash),
-            badge: null,
+            label:   'Cash & Equivalents',
+            value:   fmtB(health.cash),
+            badge:   null,
+            heatmap: null,
           },
         ]}
       />
@@ -290,31 +335,39 @@ export default function KeyRatios({ financials, company }) {
         title="Cash Flow Quality"
         rows={[
           {
-            label: 'FCF Margin',
-            value: pct(cf.fcfMargin),
-            badge: rate(cf.fcfMargin, { goodAbove: 0.10, okAbove: 0.03 }),
-            note:  'Free Cash Flow ÷ Revenue',
+            label:   'FCF Margin',
+            value:   pct(cf.fcfMargin),
+            badge:   rate(cf.fcfMargin, { goodAbove: 0.10, okAbove: 0.03 }),
+            note:    'Free Cash Flow ÷ Revenue',
+            heatmap: h(cf.fcfMargin, ranges.fcfMargin,
+                       { min: -0.05, max: 0.30, higherIsBetter: true }),
           },
           {
-            label: 'Operating Cash Flow',
-            value: fmtB(cf.ocf),
-            badge: null,
+            label:   'Operating Cash Flow',
+            value:   fmtB(cf.ocf),
+            badge:   null,
+            heatmap: null,
           },
           {
-            label: 'Free Cash Flow',
-            value: fmtB(cf.fcf),
-            badge: cf.fcf != null ? (cf.fcf > 0 ? 'good' : 'weak') : 'neutral',
+            label:   'Free Cash Flow',
+            value:   fmtB(cf.fcf),
+            badge:   cf.fcf != null ? (cf.fcf > 0 ? 'good' : 'weak') : 'neutral',
+            heatmap: null,
           },
           {
-            label: 'OCF / Net Income',
-            value: cf.ocfToNI != null ? num(cf.ocfToNI) : '—',
-            badge: rate(cf.ocfToNI, { goodAbove: 1.0, okAbove: 0.7 }),
-            note:  '>1 means earnings are well-backed by cash',
+            label:   'OCF / Net Income',
+            value:   cf.ocfToNI != null ? num(cf.ocfToNI) : '—',
+            badge:   rate(cf.ocfToNI, { goodAbove: 1.0, okAbove: 0.7 }),
+            note:    '>1 means earnings are well-backed by cash',
+            heatmap: cf.ocfToNI != null
+              ? { value: cf.ocfToNI, min: 0, max: 2.5, higherIsBetter: true }
+              : null,
           },
           {
-            label: 'CapEx / Revenue',
-            value: pct(cf.capexRatio),
-            badge: null,
+            label:   'CapEx / Revenue',
+            value:   pct(cf.capexRatio),
+            badge:   null,
+            heatmap: null,
           },
         ]}
       />
@@ -325,34 +378,41 @@ export default function KeyRatios({ financials, company }) {
 
 // ── Ratio computation ─────────────────────────────────────────────────────────
 
+function histRange(arr) {
+  const valid = arr.filter(v => v != null && isFinite(v) && !isNaN(v));
+  if (valid.length < 2) return null;
+  return { min: Math.min(...valid), max: Math.max(...valid), higherIsBetter: undefined };
+}
+
 function computeRatios(financials, company) {
   if (!financials) return null;
 
-  const income   = financials.income?.[0]   || {};
-  const balance  = financials.balance?.[0]  || {};
-  const cashflow = financials.cashflow?.[0] || {};
+  const incomeArr   = financials.income   || [];
+  const balanceArr  = financials.balance  || [];
+  const cashflowArr = financials.cashflow || [];
 
-  const price     = company?.price;
-  const mktCap    = company?.marketCap;
+  const income   = incomeArr[0]   || {};
+  const balance  = balanceArr[0]  || {};
+  const cashflow = cashflowArr[0] || {};
 
-  // Valuation
-  const revenue  = income.revenue;
-  const ebitda   = income.ebitda;
-  const equity   = balance.shareholdersEquity;
+  const price    = company?.price;
+  const mktCap   = company?.marketCap;
+
+  const revenue   = income.revenue;
+  const ebitda    = income.ebitda;
+  const equity    = balance.shareholdersEquity;
   const totalDebt = balance.totalDebt;
-  const cash     = balance.cashAndEquivalents;
-  const ev       = mktCap != null && totalDebt != null && cash != null
-    ? mktCap + totalDebt - cash
-    : null;
+  const cash      = balance.cashAndEquivalents;
+  const ev        = mktCap != null && totalDebt != null && cash != null
+    ? mktCap + totalDebt - cash : null;
 
   const val = {
-    pe:      company?.peRatio ?? (price != null && income.eps ? div(price, income.eps) : null),
-    ps:      div(mktCap, revenue),
-    pb:      div(mktCap, equity),
-    evEbitda: div(ev, ebitda),
+    pe:       company?.peRatio ?? (price != null && income.eps ? div(price, income.eps) : null),
+    ps:       company?.psRatio ?? div(mktCap, revenue),
+    pb:       company?.pbRatio ?? div(mktCap, equity),
+    evEbitda: company?.evEbitda ?? div(ev, ebitda),
   };
 
-  // Profitability (use most recent year)
   const prof = {
     grossMargin:  income.grossMargin,
     opMargin:     income.operatingMargin,
@@ -362,7 +422,6 @@ function computeRatios(financials, company) {
     roa:          div(income.netIncome, balance.totalAssets),
   };
 
-  // Financial Health
   const health = {
     currentRatio: div(balance.totalCurrentAssets, balance.totalCurrentLiabilities),
     debtEquity:   div(totalDebt, equity),
@@ -371,7 +430,6 @@ function computeRatios(financials, company) {
     cash,
   };
 
-  // Cash Flow
   const ocf = cashflow.operatingCashFlow;
   const fcf = cashflow.freeCashFlow;
   const cf = {
@@ -386,15 +444,52 @@ function computeRatios(financials, company) {
   };
 
   // Margin trends (last 3 years)
-  const years      = (financials.income || []).slice(0, 3);
-  const trendYears = years.map((y) => y.date?.slice(0, 4)).filter(Boolean);
-
+  const trendYrs = incomeArr.slice(0, 3);
   const trends = {
-    years:        trendYears,
-    grossMargins: years.map((y) => y.grossMargin),
-    opMargins:    years.map((y) => y.operatingMargin),
-    netMargins:   years.map((y) => y.netMargin),
+    years:        trendYrs.map(y => y.date?.slice(0, 4)).filter(Boolean),
+    grossMargins: trendYrs.map(y => y.grossMargin),
+    opMargins:    trendYrs.map(y => y.operatingMargin),
+    netMargins:   trendYrs.map(y => y.netMargin),
   };
 
-  return { val, prof, health, cf, trends };
+  // Historical ranges for heatmaps — zips income[i] with balance[i] by array position
+  const len = Math.min(incomeArr.length, balanceArr.length, cashflowArr.length);
+  const ranges = {
+    grossMargin:  histRange(incomeArr.map(y => y.grossMargin)),
+    opMargin:     histRange(incomeArr.map(y => y.operatingMargin)),
+    netMargin:    histRange(incomeArr.map(y => y.netMargin)),
+    ebitdaMargin: histRange(incomeArr.map(y => y.revenue ? div(y.ebitda, y.revenue) : null)),
+    roe:          histRange(Array.from({ length: len }, (_, i) =>
+      div(incomeArr[i]?.netIncome, balanceArr[i]?.shareholdersEquity)
+    )),
+    roa:          histRange(Array.from({ length: len }, (_, i) =>
+      div(incomeArr[i]?.netIncome, balanceArr[i]?.totalAssets)
+    )),
+    currentRatio: histRange(Array.from({ length: len }, (_, i) =>
+      div(balanceArr[i]?.totalCurrentAssets, balanceArr[i]?.totalCurrentLiabilities)
+    )),
+    debtEquity:   histRange(Array.from({ length: len }, (_, i) =>
+      div(balanceArr[i]?.totalDebt, balanceArr[i]?.shareholdersEquity)
+    )),
+    debtAssets:   histRange(Array.from({ length: len }, (_, i) =>
+      div(balanceArr[i]?.totalDebt, balanceArr[i]?.totalAssets)
+    )),
+    fcfMargin:    histRange(Array.from({ length: len }, (_, i) =>
+      div(cashflowArr[i]?.freeCashFlow, incomeArr[i]?.revenue)
+    )),
+  };
+
+  // Attach higherIsBetter direction to each historical range
+  if (ranges.grossMargin)  ranges.grossMargin.higherIsBetter  = true;
+  if (ranges.opMargin)     ranges.opMargin.higherIsBetter     = true;
+  if (ranges.netMargin)    ranges.netMargin.higherIsBetter    = true;
+  if (ranges.ebitdaMargin) ranges.ebitdaMargin.higherIsBetter = true;
+  if (ranges.roe)          ranges.roe.higherIsBetter          = true;
+  if (ranges.roa)          ranges.roa.higherIsBetter          = true;
+  if (ranges.currentRatio) ranges.currentRatio.higherIsBetter = true;
+  if (ranges.debtEquity)   ranges.debtEquity.higherIsBetter   = false;
+  if (ranges.debtAssets)   ranges.debtAssets.higherIsBetter   = false;
+  if (ranges.fcfMargin)    ranges.fcfMargin.higherIsBetter    = true;
+
+  return { val, prof, health, cf, trends, ranges };
 }
