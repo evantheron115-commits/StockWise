@@ -81,8 +81,8 @@ export default function DCFTool({ ticker, currentPrice }) {
       lastHapticVals.current[key] = val;
     }
     const next = { ...inputs, [key]: val };
-    if (result?.inputs && currentPrice) {
-      const iv = quickCalcIV(result.inputs, next);
+    if (result?.data?.inputs && currentPrice) {
+      const iv = quickCalcIV(result.data.inputs, next);
       if (iv != null) {
         const margin  = Math.abs(iv - currentPrice) / currentPrice;
         const newZone = margin <= 0.03  ? 'heavy'
@@ -112,13 +112,24 @@ export default function DCFTool({ ticker, currentPrice }) {
     setError(null);
     setResult(null);
     try {
-      const data = await runDCF(ticker, {
+      const resp = await runDCF(ticker, {
         growthRate:     inputs.growthRate / 100,
         discountRate:   inputs.discountRate / 100,
         terminalGrowth: inputs.terminalGrowth / 100,
         forecastYears:  inputs.forecastYears,
       });
-      setResult(data);
+      // Seed sliders with sector defaults if the backend provided them
+      // and the user hasn't changed them from the initial DEFAULT_INPUTS
+      if (resp.dcfDefaults && JSON.stringify(inputs) === JSON.stringify(DEFAULT_INPUTS)) {
+        const d = resp.dcfDefaults;
+        setInputs({
+          growthRate:     Math.round(d.growthRate     * 100),
+          discountRate:   Math.round(d.discountRate   * 100),
+          terminalGrowth: Math.round(d.terminalGrowth * 100),
+          forecastYears:  inputs.forecastYears,
+        });
+      }
+      setResult(resp);
       hapticSuccess();
     } catch (err) {
       setError(
@@ -131,7 +142,9 @@ export default function DCFTool({ ticker, currentPrice }) {
     }
   }
 
-  const iv = result?.results?.intrinsicValuePerShare;
+  // result shape: { ticker, projectionMethod, dcfDefaults, data: { results, steps, inputs } }
+  const dcfData = result?.data;
+  const iv = dcfData?.results?.intrinsicValuePerShare;
   const margin = iv != null && currentPrice > 0
     ? ((iv - currentPrice) / currentPrice * 100)
     : null;
@@ -213,6 +226,21 @@ export default function DCFTool({ ticker, currentPrice }) {
       {result && (
         <div className="space-y-5 border-t border-gray-800 pt-5">
 
+          {/* Projected FCF notice */}
+          {result.projectionMethod && (
+            <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-4 py-3 flex items-start gap-2">
+              <span className="text-amber-400 mt-0.5">⚠</span>
+              <div>
+                <p className="text-xs text-amber-400 font-medium mb-0.5">Projected FCF</p>
+                <p className="text-xs text-amber-500/70 leading-relaxed">
+                  Reported free cash flow was unavailable. Base FCF was estimated using{' '}
+                  <span className="font-mono">{result.projectionMethod}</span>. Results are
+                  illustrative — verify against actual filings before using.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Intrinsic value banner */}
           <div className="bg-surface-800/60 border border-gold-500/10 rounded-xl p-5 text-center shadow-glow-gold">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-mono">
@@ -236,16 +264,16 @@ export default function DCFTool({ ticker, currentPrice }) {
             iv={iv}
             currentPrice={currentPrice}
             inputs={inputs}
-            result={result}
+            result={dcfData}
           />
 
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              ['PV of FCFs',       fmtVal(result.steps.pvOfFCFs)],
-              ['Terminal Value PV',fmtVal(result.steps.terminalValuePV)],
-              ['Enterprise Value', fmtVal(result.results.enterpriseValue)],
-              ['Equity Value',     fmtVal(result.results.equityValue)],
+              ['PV of FCFs',       fmtVal(dcfData?.steps?.pvOfFCFs)],
+              ['Terminal Value PV',fmtVal(dcfData?.steps?.terminalValuePV)],
+              ['Enterprise Value', fmtVal(dcfData?.results?.enterpriseValue)],
+              ['Equity Value',     fmtVal(dcfData?.results?.equityValue)],
             ].map(([label, val]) => (
               <div key={label} className="stat-card">
                 <p className="text-xs text-gray-600 mb-1">{label}</p>
@@ -271,8 +299,8 @@ export default function DCFTool({ ticker, currentPrice }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(result.steps.projectedFlows || []).map((f, i) => {
-                    const cumPV = result.steps.projectedFlows
+                  {(dcfData?.steps?.projectedFlows || []).map((f, i) => {
+                    const cumPV = dcfData.steps.projectedFlows
                       .slice(0, i + 1)
                       .reduce((s, x) => s + x.presentValue, 0);
                     return (
@@ -287,10 +315,10 @@ export default function DCFTool({ ticker, currentPrice }) {
                   {/* Terminal value row */}
                   <tr className="border-t border-gray-700 bg-gray-800/30">
                     <td className="py-2 text-gray-300 font-medium">Terminal Value</td>
-                    <td className="py-2 text-right font-mono text-gray-300">{fmtVal(result.steps.terminalValue)}</td>
-                    <td className="py-2 text-right font-mono text-brand-400">{fmtVal(result.steps.terminalValuePV)}</td>
+                    <td className="py-2 text-right font-mono text-gray-300">{fmtVal(dcfData?.steps?.terminalValue)}</td>
+                    <td className="py-2 text-right font-mono text-brand-400">{fmtVal(dcfData?.steps?.terminalValuePV)}</td>
                     <td className="py-2 text-right text-xs text-gray-600">
-                      {result.steps.tvAsPercentOfEV} of EV
+                      {dcfData?.steps?.tvAsPercentOfEV} of EV
                     </td>
                   </tr>
                 </tbody>
@@ -301,7 +329,7 @@ export default function DCFTool({ ticker, currentPrice }) {
           {/* Sensitivity Matrix — live-updates as sliders move */}
           <DCFSensitivityMatrix
             inputs={inputs}
-            result={result}
+            result={dcfData}
             currentPrice={currentPrice}
           />
 
@@ -309,13 +337,18 @@ export default function DCFTool({ ticker, currentPrice }) {
           <div className="bg-gray-800/30 rounded-lg p-4">
             <p className="text-xs text-gray-600 mb-2 uppercase tracking-wider">Inputs used</p>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 font-mono">
-              <span>Base FCF: {fmtVal(result.inputs.freeCashFlow)}</span>
-              <span>Growth: {result.inputs.growthRate}</span>
-              <span>WACC: {result.inputs.discountRate}</span>
-              <span>Terminal: {result.inputs.terminalGrowth}</span>
-              <span>Period: {result.inputs.forecastYears}y</span>
-              <span>Net Debt: {fmtVal(result.inputs.netDebt)}</span>
-              <span>Shares: {result.inputs.sharesOutstanding?.toLocaleString()}M</span>
+              <span>
+                Base FCF: {fmtVal(dcfData?.inputs?.freeCashFlow)}
+                {result.projectionMethod && (
+                  <span className="text-amber-600 ml-1">(projected)</span>
+                )}
+              </span>
+              <span>Growth: {dcfData?.inputs?.growthRate}</span>
+              <span>WACC: {dcfData?.inputs?.discountRate}</span>
+              <span>Terminal: {dcfData?.inputs?.terminalGrowth}</span>
+              <span>Period: {dcfData?.inputs?.forecastYears}y</span>
+              <span>Net Debt: {fmtVal(dcfData?.inputs?.netDebt)}</span>
+              <span>Shares: {dcfData?.inputs?.sharesOutstanding?.toLocaleString()}M</span>
             </div>
           </div>
 

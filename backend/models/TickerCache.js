@@ -30,8 +30,8 @@ async function getTickerCacheCompany(ticker) {
       return { data: rows[0].company_json, isFresh: age < FRESH_HOURS };
     }, QUERY_TIMEOUT_MS);
   } catch (err) {
-    if (err.message !== 'DB query timeout')
-      console.warn('[TickerCache] getCompany error:', err.message);
+    pool.logStats('getCompany');
+    console.warn('[TickerCache] getCompany error:', err.message);
     return null;
   }
 }
@@ -66,8 +66,8 @@ async function getTickerCacheFinancials(ticker) {
       return { data: rows[0].financials_json, isFresh: age < FRESH_HOURS };
     }, QUERY_TIMEOUT_MS);
   } catch (err) {
-    if (err.message !== 'DB query timeout')
-      console.warn('[TickerCache] getFinancials error:', err.message);
+    pool.logStats('getFinancials');
+    console.warn('[TickerCache] getFinancials error:', err.message);
     return null;
   }
 }

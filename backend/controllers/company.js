@@ -12,6 +12,7 @@ const {
   normalizeHistoricalPrices,
 } = require('../utils/normalize');
 const { calculateDCF } = require('../utils/dcf');
+const { fillCompanyMetrics, deriveDCFInputs } = require('../utils/smartFill');
 const db = require('../db/queries');
 
 // Build a minimal company object from Polygon ticker details.
@@ -93,19 +94,24 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
     let profileData = null;
     let usedTicker  = ticker;
 
+    console.log(`[company] Ticker variants to try for "${ticker}": ${variants.join(', ')}`);
     for (const v of variants) {
       try {
         const data = await fmp.fetchCompanyProfile(v);
-        if (data?.length) { profileData = data; usedTicker = v; break; }
+        if (data?.length) {
+          console.log(`[company] FMP profile HIT for variant "${v}"`);
+          profileData = data; usedTicker = v; break;
+        }
+        console.warn(`[company] FMP profile empty for variant "${v}"`);
       } catch (e) {
         if (e.isRateLimit) throw e;
-        console.warn(`[_fetchCompany] FMP profile failed for variant ${v}:`, e.message);
+        console.warn(`[company] FMP profile ERROR for variant "${v}": ${e.message}`);
       }
     }
 
     // Phase 2: Polygon ticker details fallback
     if (!profileData?.length) {
-      console.warn(`[_fetchCompany] FMP returned empty for all variants of ${ticker} — trying Polygon`);
+      console.warn(`[company] All FMP variants exhausted for "${ticker}" — trying Polygon`);
       try {
         const polyCompany = await _companyFromPolygon(usedTicker);
         if (polyCompany) {
@@ -178,11 +184,8 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
       }
     } catch { /* optional enrichment */ }
 
-    // Zero-dash: compute missing values from available fields
-    if (!c.marketCap && c.price > 0 && c.sharesOutstanding > 0)
-      c.marketCap = c.price * c.sharesOutstanding;
-    if ((!c.peRatio || c.peRatio <= 0) && c.price > 0 && c.eps > 0)
-      c.peRatio = +(c.price / c.eps).toFixed(2);
+    // Fill computable metrics before caching (no financials available here — basic fill only)
+    fillCompanyMetrics(c, null);
 
     db.upsertCompany(c).catch((e) => console.error('[DB] upsertCompany:', e.message));
     tc.setTickerCacheCompany(ticker, c).catch((e) => console.error('[TickerCache]:', e.message));
@@ -371,44 +374,8 @@ async function getFullSpectrum(req, res) {
     const chart      = chartResult.status === 'fulfilled'
       ? chartResult.value.data : null;
 
-    // Backfill valuation ratios the API may not have returned
-    if (company && financials) {
-      const income  = financials.income?.[0]  || {};
-      const balance = financials.balance?.[0] || {};
-
-      // EPS fallback: income statement epsDiluted → eps
-      if (company.eps == null) {
-        const stmtEps = income.epsDiluted ?? income.eps ?? null;
-        if (stmtEps != null) company.eps = stmtEps;
-      }
-
-      // Market cap fallback: price × sharesOutstanding
-      if (company.marketCap == null && company.price > 0) {
-        const shares = income.sharesOutstanding ?? company.sharesOutstanding ?? null;
-        if (shares > 0) company.marketCap = company.price * shares;
-      }
-
-      // P/E sanity + fallback
-      if ((company.peRatio == null || company.peRatio <= 0 || company.peRatio > 5000)
-          && company.price > 0 && company.eps > 0) {
-        company.peRatio = +(company.price / company.eps).toFixed(2);
-      }
-
-      const mktCap    = company.marketCap;
-      const revenue   = income.revenue;
-      const equity    = balance.shareholdersEquity;
-      const totalDebt = balance.totalDebt;
-      const cash      = balance.cashAndEquivalents;
-      const ebitda    = income.ebitda;
-
-      if (company.psRatio == null && mktCap && revenue)
-        company.psRatio = mktCap / revenue;
-      if (company.pbRatio == null && mktCap && equity && equity > 0)
-        company.pbRatio = mktCap / equity;
-      if (company.evEbitda == null && mktCap != null && totalDebt != null
-          && cash != null && ebitda && ebitda > 0)
-        company.evEbitda = (mktCap + totalDebt - cash) / ebitda;
-    }
+    // Fill all computable metrics — financials available here for full derived ratios
+    if (company) fillCompanyMetrics(company, financials);
 
     const allFromCache = [companyResult, financialsResult, chartResult]
       .filter(r => r.status === 'fulfilled')
@@ -433,47 +400,65 @@ async function runDCF(req, res) {
   if (!validateTicker(ticker, res)) return;
 
   const rawBody = req.body;
-  const growthRate   = Math.min(Math.max(parseFloat(rawBody.growthRate)     || 0.10, -0.50), 1.00);
-  const discountRate = Math.min(Math.max(parseFloat(rawBody.discountRate)   || 0.10,  0.01), 1.00);
-  const termGrowth   = Math.min(Math.max(parseFloat(rawBody.terminalGrowth) || 0.03, -0.10), 0.50);
-  const forecastYrs  = Math.min(Math.max(parseInt(rawBody.forecastYears)    || 10,   1),    50);
 
   try {
+    // Load financials + company (for sector profile)
     const cacheKey = `financials:${ticker}`;
-    let financials  = await getCache(cacheKey);
-
+    let financials = await getCache(cacheKey);
     if (!financials) {
       try {
         const { data } = await _fetchFinancials(ticker);
         financials = data;
       } catch (apiErr) {
         if (apiErr.isRateLimit) return sendRateLimit(res);
-        throw apiErr;
+        // Continue — deriveDCFInputs handles null financials via sector proxy
+        financials = null;
       }
     }
 
-    const latestCF = financials.cashflow?.[0];
-    const latestBS = financials.balance?.[0];
-    const latestIS = financials.income?.[0];
+    let company = null;
+    try {
+      const { data } = await _fetchCompany(ticker);
+      company = data;
+    } catch { /* sector defaults still work without company */ }
 
-    const freeCashFlow = latestCF?.freeCashFlow;
+    const { freeCashFlow, netDebt, sharesOutstanding, dcfDefaults, projectionMethod } =
+      deriveDCFInputs(financials, company);
+
     if (!freeCashFlow || freeCashFlow <= 0) {
       return res.status(400).json({
-        error: 'This company has negative or zero free cash flow. DCF valuation requires positive FCF.',
+        error: 'This company has negative free cash flow across all periods. ' +
+               'DCF valuation is not meaningful for companies burning cash. ' +
+               'Consider using Price/Sales or EV/Revenue multiples instead.',
       });
     }
 
+    // User-supplied inputs take precedence; sector defaults fill any gaps
+    const growthRate   = Math.min(Math.max(
+      parseFloat(rawBody.growthRate)     ?? dcfDefaults.growthRate,    -0.50), 1.00);
+    const discountRate = Math.min(Math.max(
+      parseFloat(rawBody.discountRate)   ?? dcfDefaults.discountRate,   0.01), 1.00);
+    const termGrowth   = Math.min(Math.max(
+      parseFloat(rawBody.terminalGrowth) ?? dcfDefaults.terminalGrowth,-0.10), 0.50);
+    const forecastYrs  = Math.min(Math.max(
+      parseInt(rawBody.forecastYears)    || 10,                         1),    50);
+
     const result = calculateDCF({
       freeCashFlow,
-      growthRate:        growthRate,
-      discountRate:      discountRate,
+      growthRate,
+      discountRate,
       terminalGrowth:    termGrowth,
       forecastYears:     forecastYrs,
-      netDebt:           latestBS?.netDebt || 0,
-      sharesOutstanding: latestIS?.sharesOutstanding || 1,
+      netDebt:           netDebt   || 0,
+      sharesOutstanding: sharesOutstanding || 1,
     });
 
-    return res.json({ ticker, data: result });
+    return res.json({
+      ticker,
+      projectionMethod, // null = real reported FCF; string = estimated
+      dcfDefaults,      // sector-recommended defaults sent to client
+      data: result,
+    });
 
   } catch (err) {
     if (err.isRateLimit) return sendRateLimit(res);

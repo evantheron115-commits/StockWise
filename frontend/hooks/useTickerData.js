@@ -2,9 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { getCompany, getFinancials } from '../lib/api';
 import { saveRecent } from '../components/CommandPalette';
 
-const SNAP_TTL    = 60 * 60 * 1000; // 60 min — matches backend quote cache
-const RETRY_DELAY = 6000;            // 6s between retries while backend wakes
-const MAX_RETRIES = 8;               // 48s max wait
+const SNAP_TTL         = 60 * 60 * 1000; // 60 min — matches backend quote cache
+const RETRY_DELAY      = 6000;           // 6s between retries while backend wakes
+const MAX_RETRIES      = 8;             // 48s max wait
+const FIN_RETRY_DELAY  = 8000;          // slightly longer delay for financials retries
+const FIN_MAX_RETRIES  = 5;            // 40s max wait for financials
 
 function snapKey(t) { return `valubull_snap_${t}`; }
 
@@ -38,16 +40,20 @@ export function useTickerData(ticker) {
   const [dataSource,        setDataSource]        = useState(null);
   const [isStale,           setIsStale]           = useState(false);
 
-  const loadId    = useRef(0);
-  const retryRef  = useRef(null);
-  const retryCount = useRef(0);
+  const loadId        = useRef(0);
+  const retryRef      = useRef(null);
+  const retryCount    = useRef(0);
+  const finRetryRef   = useRef(null);
+  const finRetryCount = useRef(0);
 
   useEffect(() => {
     if (!ticker) return;
 
     clearTimeout(retryRef.current);
+    clearTimeout(finRetryRef.current);
     loadId.current += 1;
-    retryCount.current = 0;
+    retryCount.current    = 0;
+    finRetryCount.current = 0;
     const id = loadId.current;
     const t  = ticker.toUpperCase();
 
@@ -137,18 +143,41 @@ export function useTickerData(ticker) {
 
       attemptFetch();
 
-      getFinancials(t)
-        .then(({ payload }) => {
-          if (loadId.current !== id) return;
-          freshFinancials = payload;
-          setFinancials(payload);
-          if (freshCompany) writeSnap(t, freshCompany, payload);
-        })
-        .catch(() => {})
-        .finally(() => { if (loadId.current === id) setFinancialsLoading(false); });
+      function attemptFinancials() {
+        getFinancials(t)
+          .then(({ payload }) => {
+            if (loadId.current !== id) return;
+            freshFinancials = payload;
+            setFinancials(payload);
+            if (freshCompany) writeSnap(t, freshCompany, payload);
+          })
+          .catch((err) => {
+            if (loadId.current !== id) return;
+            const status = err.response?.status;
+            const isNotFound  = status === 404;
+            const isRateLimit = err.isRateLimit || status === 429;
+            if (!isNotFound && !isRateLimit && finRetryCount.current < FIN_MAX_RETRIES) {
+              finRetryCount.current += 1;
+              finRetryRef.current = setTimeout(attemptFinancials, FIN_RETRY_DELAY);
+              return;
+            }
+            // Exhausted retries or definitive failure — leave financials null
+          })
+          .finally(() => {
+            // Stop spinner only if we're not about to retry
+            if (loadId.current === id && !finRetryRef.current) {
+              setFinancialsLoading(false);
+            }
+          });
+      }
+
+      attemptFinancials();
     }
 
-    return () => { clearTimeout(retryRef.current); };
+    return () => {
+      clearTimeout(retryRef.current);
+      clearTimeout(finRetryRef.current);
+    };
   }, [ticker]);
 
   return { company, financials, loading, financialsLoading, error, rateLimited, isWaking, dataSource, isStale };

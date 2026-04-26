@@ -25,29 +25,36 @@ function makeRateLimitError(message) {
 
 // Single attempt with timeout. Never retries rate-limit responses.
 async function fetchWithRetry(url, retries = 1, timeoutMs = 12000) {
+  const safeUrl = url.replace(/apikey=[^&]+/, 'apikey=***');
   for (let attempt = 1; attempt <= retries; attempt++) {
+    const t0 = Date.now();
     try {
-      console.log(`[FMP] GET ${url.replace(/apikey=[^&]+/, 'apikey=***')}`);
+      console.log(`[FMP] GET ${safeUrl}`);
       const response = await axios.get(url, { timeout: timeoutMs });
+      const ms = Date.now() - t0;
 
       // FMP embeds errors in 200 responses
       if (response.data && response.data['Error Message']) {
-        const msg = response.data['Error Message'];
+        const msg   = response.data['Error Message'];
         const lower = msg.toLowerCase();
+        console.error(`[FMP] 200 but error body (${ms}ms): ${msg.slice(0, 200)}`);
         if (RATE_LIMIT_PATTERNS.some((p) => lower.includes(p))) {
           throw makeRateLimitError(msg);
         }
         throw new Error(msg);
       }
 
+      console.log(`[FMP] 200 OK (${ms}ms) ${safeUrl}`);
       return response.data;
     } catch (err) {
-      // Log exact failure details so Railway logs show the real cause
+      const ms = Date.now() - t0;
       if (err.response) {
-        console.error(`[FMP] HTTP ${err.response.status} for ${url.replace(/apikey=[^&]+/, 'apikey=***')}:`,
-          JSON.stringify(err.response.data).slice(0, 300));
-      } else {
-        console.error(`[FMP] Network error (${err.code || err.message}) for ${url.replace(/apikey=[^&]+/, 'apikey=***')}`);
+        console.error(
+          `[FMP] HTTP ${err.response.status} (${ms}ms) ${safeUrl} — ` +
+          JSON.stringify(err.response.data).slice(0, 200)
+        );
+      } else if (!err.isRateLimit && !(err.code === 'ERR_CANCELED')) {
+        console.error(`[FMP] ${err.code || err.message} (${ms}ms) ${safeUrl}`);
       }
 
       // HTTP 429 — never retry

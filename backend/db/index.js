@@ -10,7 +10,17 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('[DB] Unexpected pool error:', err.message);
+  console.error(
+    `[DB] Pool error — total:${pool.totalCount} idle:${pool.idleCount} waiting:${pool.waitingCount} — ${err.message}`
+  );
 });
+
+// Call this wherever you suspect connection exhaustion.
+// pg.Pool exposes these counts synchronously — zero cost to read.
+pool.logStats = function (label = '') {
+  console.log(
+    `[DB] Pool${label ? ' ' + label : ''} — total:${pool.totalCount} idle:${pool.idleCount} waiting:${pool.waitingCount}`
+  );
+};
 
 module.exports = pool;

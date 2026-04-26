@@ -55,7 +55,8 @@ export async function getChart(ticker, years = 5) {
 
 export async function runDCF(ticker, params) {
   const { data } = await api.post(`/api/company/${ticker}/dcf`, params);
-  return data.data;
+  // Return the full response so callers can access projectionMethod + dcfDefaults
+  return data;
 }
 
 export async function getNews(ticker) {

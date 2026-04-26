@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-const PING_INTERVAL = 4 * 60 * 1000; // 4 min — keeps Railway free tier awake
-const WAKING_THRESHOLD = 2000;        // show "Connecting..." only if server takes > 2s
+const PING_INTERVAL    = 4 * 60 * 1000; // 4 min — keeps Railway free tier awake
+const WAKING_THRESHOLD = 2000;           // show "Connecting..." only if server takes > 2s
+const FAIL_THRESHOLD   = 2;             // consecutive failures before showing "Offline"
 
 // Returns: 'unknown' | 'up' | 'waking' | 'down'
 export function useSentinel() {
   const [status, setStatus] = useState('unknown');
-  const intervalRef = useRef(null);
+  const intervalRef    = useRef(null);
+  const failStreak     = useRef(0);   // consecutive failure count
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -19,7 +21,7 @@ export function useSentinel() {
       }
       try {
         const controller = new AbortController();
-        // 20s covers Railway free-tier cold starts (can take 15–30s to wake)
+        // 30s covers Railway free-tier cold starts (can take 15–30s to wake)
         const hardTimeout = setTimeout(() => controller.abort(), 30000);
         const res = await fetch(`${API_BASE}/health`, {
           method: 'HEAD',
@@ -28,10 +30,18 @@ export function useSentinel() {
         });
         clearTimeout(hardTimeout);
         if (wakeTimer) clearTimeout(wakeTimer);
-        setStatus(res.ok ? 'up' : 'down');
+        if (res.ok) {
+          failStreak.current = 0;
+          setStatus('up');
+        } else {
+          failStreak.current += 1;
+          setStatus(failStreak.current >= FAIL_THRESHOLD ? 'down' : 'waking');
+        }
       } catch {
         if (wakeTimer) clearTimeout(wakeTimer);
-        setStatus('down');
+        failStreak.current += 1;
+        // Single timeout/error = 'waking' (Railway cold start); repeated = 'down'
+        setStatus(failStreak.current >= FAIL_THRESHOLD ? 'down' : 'waking');
       }
     }
 

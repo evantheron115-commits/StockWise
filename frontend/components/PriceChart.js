@@ -58,19 +58,30 @@ export default function PriceChart({ ticker }) {
   const [chartSource, setChartSource] = useState(null);
   const [crosshairX,  setCrosshairX]  = useState(null); // active date string for ReferenceLine
 
-  const abortRef        = useRef(null);
-  const activeTicker    = useRef(ticker);
-  const prevCursorIdx   = useRef(null);
+  const abortRef          = useRef(null);
+  const activeTicker      = useRef(ticker);
+  const prevCursorIdx     = useRef(null);
   const chartContainerRef = useRef(null);
+  const retryRef          = useRef(null);
+  const retryCount        = useRef(0);
+
+  const CHART_RETRY_DELAY = 7000;
+  const CHART_MAX_RETRIES = 5;
 
   useEffect(() => {
-    return () => { abortRef.current?.abort(); };
+    return () => {
+      abortRef.current?.abort();
+      clearTimeout(retryRef.current);
+    };
   }, []);
 
   useEffect(() => {
     activeTicker.current = ticker;
     abortRef.current?.abort();
     abortRef.current = null;
+    clearTimeout(retryRef.current);
+    retryRef.current  = null;
+    retryCount.current = 0;
     setLoaded(false);
     setData([]);
     setError(null);
@@ -82,7 +93,7 @@ export default function PriceChart({ ticker }) {
     if (ticker) fetchChart(1);
   }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function fetchChart(years) {
+  function fetchChart(years, isAutoRetry = false) {
     if (!ticker || abortRef.current) return;
     const controller     = new AbortController();
     abortRef.current     = controller;
@@ -90,11 +101,12 @@ export default function PriceChart({ ticker }) {
 
     setLoading(true);
     setError(null);
-    setData([]);
+    if (!isAutoRetry) setData([]);
 
     getChart(ticker, years)
       .then(({ payload, source }) => {
         if (activeTicker.current !== snapshotTicker) return;
+        retryCount.current = 0;
         setData(payload ?? []);
         setChartSource(source);
         setLoaded(true);
@@ -102,15 +114,29 @@ export default function PriceChart({ ticker }) {
       .catch((err) => {
         if (err.name === 'CanceledError' || err.name === 'AbortError') return;
         if (activeTicker.current !== snapshotTicker) return;
-        setError(err.isRateLimit
-          ? 'API rate limit reached. Please wait and try again.'
-          : 'Could not load price data.'
-        );
+
+        const status      = err.response?.status;
+        const isNotFound  = status === 404;
+        const isRateLimit = err.isRateLimit || status === 429;
+
+        if (!isNotFound && !isRateLimit && retryCount.current < CHART_MAX_RETRIES) {
+          retryCount.current += 1;
+          retryRef.current = setTimeout(() => {
+            retryRef.current = null;
+            abortRef.current = null;
+            fetchChart(years, true);
+          }, CHART_RETRY_DELAY);
+        } else {
+          setError(isRateLimit
+            ? 'API rate limit reached. Please wait and try again.'
+            : 'Could not load price data.'
+          );
+        }
       })
       .finally(() => {
         if (activeTicker.current !== snapshotTicker) return;
         setLoading(false);
-        abortRef.current = null;
+        if (!retryRef.current) abortRef.current = null;
       });
   }
 
