@@ -29,7 +29,7 @@ export default function StockPage() {
   const router     = useRouter();
   const { ticker } = router.query;
 
-  const { company, financials, loading, financialsLoading, error, rateLimited, dataSource, isStale } =
+  const { company, financials, loading, financialsLoading, error, rateLimited, isWaking, dataSource, isStale } =
     useTickerData(ticker);
 
   const [tab,       setTab]       = useState('price');
@@ -71,14 +71,21 @@ export default function StockPage() {
     );
   }
 
-  if (loading) {
+  if (loading || isWaking) {
     return (
       <>
         <DataStreamOverlay />
         <div className="max-w-5xl mx-auto px-4 py-16 text-center relative" style={{ zIndex: 1 }}>
           <p className="text-gray-600 text-sm font-mono animate-pulse">
-            Loading {ticker?.toUpperCase()}...
+            {isWaking
+              ? `Waking the Sovereign Engine for ${ticker?.toUpperCase()}…`
+              : `Loading ${ticker?.toUpperCase()}...`}
           </p>
+          {isWaking && (
+            <p className="text-gray-700 text-xs font-mono mt-2">
+              Server is starting up — this takes up to 30 seconds
+            </p>
+          )}
         </div>
       </>
     );
@@ -218,7 +225,7 @@ export default function StockPage() {
 
         {tab === 'summary' && (
           <>
-            <CompanySummary company={company} />
+            <CompanySummary company={company} financials={financials} />
             <p className="text-xs text-gray-600 text-center mt-6 mb-2" style={{ opacity: 0.6 }}>
               For informational purposes only. Not financial advice.
             </p>

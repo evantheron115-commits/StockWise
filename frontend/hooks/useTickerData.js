@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { getCompany, getFinancials } from '../lib/api';
 import { saveRecent } from '../components/CommandPalette';
 
-const SNAP_TTL = 60 * 60 * 1000; // 60 min — matches backend quote cache
+const SNAP_TTL    = 60 * 60 * 1000; // 60 min — matches backend quote cache
+const RETRY_DELAY = 6000;            // 6s between retries while backend wakes
+const MAX_RETRIES = 8;               // 48s max wait
 
 function snapKey(t) { return `valubull_snap_${t}`; }
 
@@ -32,20 +34,26 @@ export function useTickerData(ticker) {
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const [error,             setError]             = useState(null);
   const [rateLimited,       setRateLimited]       = useState(false);
+  const [isWaking,          setIsWaking]          = useState(false);
   const [dataSource,        setDataSource]        = useState(null);
   const [isStale,           setIsStale]           = useState(false);
 
-  const loadId = useRef(0);
+  const loadId    = useRef(0);
+  const retryRef  = useRef(null);
+  const retryCount = useRef(0);
 
   useEffect(() => {
     if (!ticker) return;
 
+    clearTimeout(retryRef.current);
     loadId.current += 1;
+    retryCount.current = 0;
     const id = loadId.current;
     const t  = ticker.toUpperCase();
 
     setError(null);
     setRateLimited(false);
+    setIsWaking(false);
 
     const snap = readSnap(t);
 
@@ -83,25 +91,45 @@ export function useTickerData(ticker) {
       let freshCompany    = null;
       let freshFinancials = null;
 
-      getCompany(t)
-        .then(({ payload, source }) => {
-          if (loadId.current !== id) return;
-          freshCompany = payload;
-          setCompany(payload);
-          setDataSource(source);
-          saveRecent(payload);
-          if (freshFinancials) writeSnap(t, payload, freshFinancials);
-        })
-        .catch((err) => {
-          if (loadId.current !== id) return;
-          if (err.isRateLimit) {
-            setRateLimited(true);
-            setError(err.message || 'API rate limit reached. Please wait a few minutes and try again.');
-          } else {
-            setError(`Could not find data for "${t}". Check the ticker and try again.`);
-          }
-        })
-        .finally(() => { if (loadId.current === id) setLoading(false); });
+      function attemptFetch() {
+        getCompany(t)
+          .then(({ payload, source }) => {
+            if (loadId.current !== id) return;
+            clearTimeout(retryRef.current);
+            freshCompany = payload;
+            setCompany(payload);
+            setDataSource(source);
+            setIsWaking(false);
+            setError(null);
+            saveRecent(payload);
+            if (freshFinancials) writeSnap(t, payload, freshFinancials);
+            setLoading(false);
+          })
+          .catch((err) => {
+            if (loadId.current !== id) return;
+            if (err.isRateLimit) {
+              setRateLimited(true);
+              setError(err.message || 'API rate limit reached. Please wait a few minutes and try again.');
+              setLoading(false);
+            } else if (err.isNetworkError || err.code === 'ECONNABORTED') {
+              // Backend is sleeping — retry automatically
+              if (retryCount.current < MAX_RETRIES) {
+                retryCount.current += 1;
+                setIsWaking(true);
+                retryRef.current = setTimeout(attemptFetch, RETRY_DELAY);
+              } else {
+                setIsWaking(false);
+                setError(`Server is not responding. Please try again in a moment.`);
+                setLoading(false);
+              }
+            } else {
+              setError(`Could not find data for "${t}". Check the ticker and try again.`);
+              setLoading(false);
+            }
+          });
+      }
+
+      attemptFetch();
 
       getFinancials(t)
         .then(({ payload }) => {
@@ -113,7 +141,9 @@ export function useTickerData(ticker) {
         .catch(() => {})
         .finally(() => { if (loadId.current === id) setFinancialsLoading(false); });
     }
+
+    return () => { clearTimeout(retryRef.current); };
   }, [ticker]);
 
-  return { company, financials, loading, financialsLoading, error, rateLimited, dataSource, isStale };
+  return { company, financials, loading, financialsLoading, error, rateLimited, isWaking, dataSource, isStale };
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getNews } from '../lib/api';
 
-export default function CompanySummary({ company }) {
+export default function CompanySummary({ company, financials }) {
   const [news,        setNews]        = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError,   setNewsError]   = useState(null);
@@ -74,16 +74,26 @@ export default function CompanySummary({ company }) {
       <div className="card">
         <h2 className="text-base font-semibold text-white mb-4">Key Statistics</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            ['Market Cap',    fmtMktCap(company.marketCap)],
-            ['P/E Ratio',     company.peRatio?.toFixed(1) ?? '—'],
-            ['EPS (TTM)',     company.eps ? `$${company.eps.toFixed(2)}` : '—'],
-            ['Beta',          company.beta?.toFixed(2) ?? '—'],
-            ['52W High',      company.high52w ? `$${company.high52w.toFixed(2)}` : '—'],
-            ['52W Low',       company.low52w  ? `$${company.low52w.toFixed(2)}`  : '—'],
-            ['Avg Volume',    company.avgVolume ? fmtVolume(company.avgVolume) : '—'],
-            ['Current Price', company.price ? `$${company.price.toFixed(2)}` : '—'],
-          ].map(([label, value]) => (
+          {(() => {
+            const latestIncome = financials?.income?.[0];
+            const resolvedEps = company.eps ?? latestIncome?.epsDiluted ?? latestIncome?.eps ?? null;
+            const resolvedMarketCap = company.marketCap
+              ?? ((company.price > 0 && company.sharesOutstanding > 0)
+                  ? company.price * company.sharesOutstanding : null);
+            const resolvedPE = (company.peRatio > 0 && company.peRatio <= 5000)
+              ? company.peRatio
+              : (company.price > 0 && resolvedEps > 0 ? company.price / resolvedEps : null);
+            return [
+              ['Market Cap',    fmtMktCap(resolvedMarketCap)],
+              ['P/E Ratio',     resolvedPE ? resolvedPE.toFixed(1) : '—'],
+              ['EPS (TTM)',     resolvedEps != null ? `$${resolvedEps.toFixed(2)}` : '—'],
+              ['Beta',          company.beta?.toFixed(2) ?? '—'],
+              ['52W High',      company.high52w ? `$${company.high52w.toFixed(2)}` : '—'],
+              ['52W Low',       company.low52w  ? `$${company.low52w.toFixed(2)}`  : '—'],
+              ['Avg Volume',    company.avgVolume ? fmtVolume(company.avgVolume) : '—'],
+              ['Current Price', company.price ? `$${company.price.toFixed(2)}` : '—'],
+            ];
+          })().map(([label, value]) => (
             <div key={label} className="stat-card">
               <p className="text-xs text-gray-600 mb-1">{label}</p>
               <p className="font-mono text-sm text-gray-200">{value}</p>
