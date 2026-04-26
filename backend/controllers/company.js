@@ -259,6 +259,24 @@ async function getFullSpectrum(req, res) {
       const income  = financials.income?.[0]  || {};
       const balance = financials.balance?.[0] || {};
 
+      // EPS fallback: income statement epsDiluted → eps
+      if (company.eps == null) {
+        const stmtEps = income.epsDiluted ?? income.eps ?? null;
+        if (stmtEps != null) company.eps = stmtEps;
+      }
+
+      // Market cap fallback: price × sharesOutstanding
+      if (company.marketCap == null && company.price > 0) {
+        const shares = income.sharesOutstanding ?? company.sharesOutstanding ?? null;
+        if (shares > 0) company.marketCap = company.price * shares;
+      }
+
+      // P/E sanity + fallback
+      if ((company.peRatio == null || company.peRatio <= 0 || company.peRatio > 5000)
+          && company.price > 0 && company.eps > 0) {
+        company.peRatio = +(company.price / company.eps).toFixed(2);
+      }
+
       const mktCap    = company.marketCap;
       const revenue   = income.revenue;
       const equity    = balance.shareholdersEquity;

@@ -145,7 +145,7 @@ export default function StockPage() {
 
         {/* Company header — dims slightly while snapshot is stale, fades to full when fresh data arrives */}
         <div style={{ opacity: isStale ? 0.82 : 1, transition: 'opacity 0.35s ease' }}>
-          <CompanyHeader company={company} />
+          <CompanyHeader company={company} financials={financials} />
         </div>
 
         {/* Neural Alpha orb — shown once financials are loaded, sits between header and tabs */}

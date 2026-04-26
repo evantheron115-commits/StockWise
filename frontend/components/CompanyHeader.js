@@ -1,12 +1,22 @@
 import { useState } from 'react';
 import WatchlistButton from './WatchlistButton';
 
-export default function CompanyHeader({ company }) {
+export default function CompanyHeader({ company, financials }) {
   const up = company.changePercent > 0;
   const dn = company.changePercent < 0;
 
-  const capTier = company.marketCap >= 500e9 ? 'font-bold'
-                : company.marketCap >= 100e9 ? 'font-semibold'
+  // Resolve EPS: quote field first, then income statement
+  const latestIncome = financials?.income?.[0];
+  const resolvedEps = company.eps ?? latestIncome?.epsDiluted ?? latestIncome?.eps ?? null;
+
+  // Resolve Market Cap: API field first, then price × shares
+  const resolvedMarketCap = company.marketCap
+    ?? ((company.price > 0 && company.sharesOutstanding > 0)
+        ? company.price * company.sharesOutstanding
+        : null);
+
+  const capTier = resolvedMarketCap >= 500e9 ? 'font-bold'
+                : resolvedMarketCap >= 100e9 ? 'font-semibold'
                 : 'font-medium';
 
   const priceRange = company.high52w - company.low52w;
@@ -74,10 +84,9 @@ export default function CompanyHeader({ company }) {
       {/* Key stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 pt-4 border-t border-white/[0.06]">
         {[
-          ['Market Cap',  fmtMktCap(company.marketCap)],
-          // Compute P/E from price÷EPS when the API omits it
-          ['P/E Ratio',   fmtPE(company.peRatio, company.price, company.eps)],
-          ['EPS (TTM)',   company.eps != null ? `$${company.eps.toFixed(2)}` : '—'],
+          ['Market Cap',  fmtMktCap(resolvedMarketCap)],
+          ['P/E Ratio',   fmtPE(company.peRatio, company.price, resolvedEps)],
+          ['EPS (TTM)',   resolvedEps != null ? `$${resolvedEps.toFixed(2)}` : '—'],
           ['Beta',        company.beta?.toFixed(2) ?? '—'],
         ].map(([label, value]) => (
           <div key={label}>
