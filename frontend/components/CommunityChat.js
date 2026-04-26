@@ -185,29 +185,36 @@ export default function CommunityChat({ ticker }) {
           </p>
         ) : (
           <div className="space-y-3">
-            {posts.map((post) => (
-              <div key={post.id} className="flex gap-3">
-                <Avatar name={post.user_name} image={post.user_avatar} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-xs font-semibold text-amber-400/90">{post.user_name}</span>
-                    <span className="text-[10px] text-gray-600">{timeAgo(post.created_at)}</span>
-                  </div>
-                  {/* Frosted glass message bubble */}
-                  <div
-                    className="rounded-xl rounded-tl-sm px-3 py-2 text-sm text-gray-300 whitespace-pre-wrap break-words"
-                    style={{
-                      background:           'rgba(255,255,255,0.04)',
-                      backdropFilter:       'blur(8px)',
-                      WebkitBackdropFilter: 'blur(8px)',
-                      border:               '1px solid rgba(255,255,255,0.06)',
-                    }}
-                  >
-                    {post.content}
+            {posts.map((post) => {
+              const isOwn = session?.user?.email === post.user_email || session?.user?.name === post.user_name;
+              return (
+                <div key={post.id} className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {!isOwn && <Avatar name={post.user_name} image={post.user_avatar} />}
+                  <div className={`max-w-[80%] min-w-0 ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
+                    <div className={`flex items-baseline gap-2 mb-1 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <span className={`text-xs font-semibold ${isOwn ? 'text-brand-400' : 'text-amber-400/90'}`}>{post.user_name}</span>
+                      <span className="text-[10px] text-gray-600">{timeAgo(post.created_at)}</span>
+                    </div>
+                    <div
+                      className={`px-3 py-2 text-sm text-gray-300 whitespace-pre-wrap break-words ${isOwn ? 'rounded-xl rounded-tr-sm' : 'rounded-xl rounded-tl-sm'}`}
+                      style={isOwn ? {
+                        background:           'rgba(99,102,241,0.18)',
+                        backdropFilter:       'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                        border:               '1px solid rgba(99,102,241,0.25)',
+                      } : {
+                        background:           'rgba(255,255,255,0.04)',
+                        backdropFilter:       'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                        border:               '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      {post.content}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

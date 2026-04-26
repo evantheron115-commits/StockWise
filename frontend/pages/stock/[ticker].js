@@ -206,10 +206,13 @@ export default function StockPage() {
               ].map(([label, val]) => (
                 <div key={label} className="stat-card">
                   <p className="text-xs text-gray-600 mb-1">{label}</p>
-                  <p className="font-mono text-sm text-gray-200">{fmtMoney(val)}</p>
+                  <p className="font-mono text-sm text-gray-200" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(val)}</p>
                 </div>
               ))}
             </div>
+            <p className="text-xs text-gray-600 text-center mt-2 mb-6" style={{ opacity: 0.6 }}>
+              For informational purposes only. Not financial advice.
+            </p>
           </>
         )}
 
@@ -223,15 +226,25 @@ export default function StockPage() {
         )}
 
         {tab === 'financials' && (
-          financialsLoading
-            ? <FinancialsSkeleton />
-            : <FinancialTable financials={financials} />
+          <>
+            {financialsLoading ? <FinancialsSkeleton /> : <FinancialTable financials={financials} />}
+            {!financialsLoading && (
+              <p className="text-xs text-gray-600 text-center mt-6 mb-2" style={{ opacity: 0.6 }}>
+                For informational purposes only. Not financial advice.
+              </p>
+            )}
+          </>
         )}
 
         {tab === 'ratios' && (
-          financialsLoading
-            ? <FinancialsSkeleton />
-            : <KeyRatios ticker={ticker?.toUpperCase()} financials={financials} company={company} />
+          <>
+            {financialsLoading ? <FinancialsSkeleton /> : <KeyRatios ticker={ticker?.toUpperCase()} financials={financials} company={company} />}
+            {!financialsLoading && (
+              <p className="text-xs text-gray-600 text-center mt-6 mb-2" style={{ opacity: 0.6 }}>
+                For informational purposes only. Not financial advice.
+              </p>
+            )}
+          </>
         )}
 
         {tab === 'dcf' && (
@@ -243,7 +256,14 @@ export default function StockPage() {
           </>
         )}
 
-        {tab === 'chat' && <CommunityChat ticker={ticker?.toUpperCase()} />}
+        {tab === 'chat' && (
+          <>
+            <CommunityChat ticker={ticker?.toUpperCase()} />
+            <p className="text-xs text-gray-600 text-center mt-2 mb-6" style={{ opacity: 0.6 }}>
+              For informational purposes only. Not financial advice.
+            </p>
+          </>
+        )}
 
       </div>
     </>

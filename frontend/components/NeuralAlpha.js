@@ -88,6 +88,7 @@ export default function NeuralAlpha({ company, financials }) {
           borderRadius: '50%',
           background:   orbColor,
           boxShadow:    `0 0 8px 3px ${orbColor}80`,
+          filter:       `drop-shadow(0 0 6px ${orbColor})`,
           animation:    'neural-pulse 2.5s ease-in-out infinite',
           border:       'none',
           cursor:       'pointer',

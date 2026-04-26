@@ -18,7 +18,7 @@ function sendRateLimit(res) {
   });
 }
 
-const TICKER_RE = /^[A-Z0-9]{1,10}$/;
+const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,14}$/;
 function validateTicker(ticker, res) {
   if (!TICKER_RE.test(ticker)) {
     res.status(400).json({ error: 'Invalid ticker symbol.' });

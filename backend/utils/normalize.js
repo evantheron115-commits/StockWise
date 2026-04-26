@@ -38,7 +38,10 @@ function normalizeCompany(fmpData) {
     country:     safeStr(d.country),
     currency:    safeStr(d.currency) || 'USD',
     price:       safeNum(d.price),
-    marketCap:   safeNum(d.mktCap),
+    marketCap:   safeNum(d.mktCap) || (() => {
+      const p = safeNum(d.price), s = safeNum(d.sharesOutstanding);
+      return (p && s) ? p * s : null;
+    })(),
     beta:        safeNum(d.beta),
     sharesOutstanding: safeNum(d.sharesOutstanding),
   };

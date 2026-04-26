@@ -20,7 +20,7 @@ export function useSentinel() {
       try {
         const controller = new AbortController();
         // 20s covers Railway free-tier cold starts (can take 15–30s to wake)
-        const hardTimeout = setTimeout(() => controller.abort(), 20000);
+        const hardTimeout = setTimeout(() => controller.abort(), 30000);
         const res = await fetch(`${API_BASE}/health`, {
           method: 'HEAD',
           cache:  'no-store',

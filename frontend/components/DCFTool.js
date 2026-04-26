@@ -219,7 +219,7 @@ export default function DCFTool({ ticker, currentPrice }) {
               Intrinsic Value per Share
             </p>
             <p className="text-4xl font-mono font-black text-gold-400"
-               style={{ letterSpacing: '-0.05em', textShadow: '0 0 20px rgba(99,102,241,0.8)', animation: 'iv-breathe 6s ease-in-out infinite' }}>
+               style={{ letterSpacing: '-0.05em', textShadow: '0 0 20px rgba(99,102,241,0.8)', animation: 'iv-breathe 6s ease-in-out infinite', fontVariantNumeric: 'tabular-nums' }}>
               ${iv?.toFixed(2) ?? '—'}
             </p>
             {margin != null && currentPrice && (

@@ -54,7 +54,7 @@ export default function CompanyHeader({ company }) {
               />
               <div
                 className="text-3xl font-mono font-extrabold text-white relative"
-                style={{ textShadow: '0 0 15px rgba(99,102,241,0.50)', letterSpacing: '-0.05em' }}
+                style={{ textShadow: '0 0 15px rgba(99,102,241,0.50)', letterSpacing: '-0.05em', fontVariantNumeric: 'tabular-nums' }}
               >
                 ${company.price?.toFixed(2) ?? '—'}
               </div>

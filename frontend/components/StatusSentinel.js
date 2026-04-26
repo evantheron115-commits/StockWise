@@ -24,7 +24,7 @@ export default function StatusSentinel() {
       <div className="flex items-center gap-1.5" title="Backend waking up…" aria-live="polite">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
         <span className="text-[10px] text-amber-500/80 font-mono hidden sm:block tracking-wide">
-          Connecting…
+          Waking the Sovereign Engine…
         </span>
       </div>
     );
