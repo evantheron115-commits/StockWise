@@ -30,12 +30,12 @@ export default function StatusSentinel() {
     );
   }
 
-  // 'down'
+  // 'down' — server is slow/sleeping, not necessarily permanently unreachable
   return (
-    <div className="flex items-center gap-1.5" title="Server unreachable" aria-live="assertive">
-      <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-      <span className="text-[10px] text-red-400/80 font-mono hidden sm:block tracking-wide">
-        Offline
+    <div className="flex items-center gap-1.5" title="Server is waking up…" aria-live="assertive">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+      <span className="text-[10px] text-amber-500/80 font-mono hidden sm:block tracking-wide">
+        Reconnecting…
       </span>
     </div>
   );

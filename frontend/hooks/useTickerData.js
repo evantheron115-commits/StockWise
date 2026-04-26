@@ -8,7 +8,7 @@ const MAX_RETRIES      = 8;             // 48s max wait
 const FIN_RETRY_DELAY  = 8000;          // slightly longer delay for financials retries
 const FIN_MAX_RETRIES  = 5;            // 40s max wait for financials
 
-function snapKey(t) { return `valubull_snap_${t}`; }
+function snapKey(t) { return `valubull_snap_v2_${t}`; }
 
 function readSnap(t) {
   try {

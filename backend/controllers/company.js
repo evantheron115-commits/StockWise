@@ -154,14 +154,17 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
       const quoteData = await fmp.fetchQuote(usedTicker);
       if (quoteData?.length) {
         const q = quoteData[0];
-        c.price         = q.price            ?? c.price;
-        c.change        = q.change            ?? null;
-        c.changePercent = q.changesPercentage ?? null;
-        c.high52w       = q.yearHigh          ?? null;
-        c.low52w        = q.yearLow           ?? null;
-        c.avgVolume     = q.avgVolume         ?? null;
-        c.peRatio       = q.pe                ?? null;
-        c.eps           = q.eps               ?? null;
+        c.price             = q.price             ?? c.price;
+        c.change            = q.change             ?? null;
+        c.changePercent     = q.changesPercentage  ?? null;
+        c.high52w           = q.yearHigh           ?? null;
+        c.low52w            = q.yearLow            ?? null;
+        c.avgVolume         = q.avgVolume          ?? null;
+        c.peRatio           = q.pe                 ?? null;
+        c.eps               = q.eps                ?? null;
+        // Quote also carries marketCap + sharesOutstanding — profile may omit these
+        c.marketCap         = q.marketCap          ?? c.marketCap;
+        c.sharesOutstanding = q.sharesOutstanding  ?? c.sharesOutstanding;
 
         if (c.peRatio !== null && (c.peRatio <= 0 || c.peRatio > 5000)) {
           c.peRatio = (c.price > 0 && c.eps > 0) ? +(c.price / c.eps).toFixed(2) : null;
