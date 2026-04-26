@@ -64,7 +64,7 @@ function analyzeStock(company, financials) {
   return { pts, maxPts, ratio, headline, factors, orbColor };
 }
 
-export default function NeuralAlpha({ company, financials }) {
+export default function NeuralAlpha({ company, financials, isStale }) {
   const [open, setOpen] = useState(false);
 
   const analysis = useMemo(
@@ -75,6 +75,8 @@ export default function NeuralAlpha({ company, financials }) {
   if (!analysis) return null;
 
   const { pts, maxPts, headline, factors, orbColor } = analysis;
+  // Amber while stale data is being refreshed in background; snap to real color once fresh
+  const displayColor = isStale ? '#fbbf24' : orbColor;
 
   return (
     <div className="relative inline-flex items-center">
@@ -86,10 +88,11 @@ export default function NeuralAlpha({ company, financials }) {
           width:        8,
           height:       8,
           borderRadius: '50%',
-          background:   orbColor,
-          boxShadow:    `0 0 8px 3px ${orbColor}80`,
-          filter:       `drop-shadow(0 0 6px ${orbColor})`,
+          background:   displayColor,
+          boxShadow:    `0 0 8px 3px ${displayColor}80`,
+          filter:       `drop-shadow(0 0 6px ${displayColor})`,
           animation:    'neural-pulse 2.5s ease-in-out infinite',
+          transition:   'background 0.6s ease, box-shadow 0.6s ease, filter 0.6s ease',
           border:       'none',
           cursor:       'pointer',
           padding:      0,
@@ -120,9 +123,9 @@ export default function NeuralAlpha({ company, financials }) {
           >
             {/* Header */}
             <div className="flex items-center gap-2 mb-3">
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: orbColor, boxShadow: `0 0 6px 1px ${orbColor}`, flexShrink: 0 }} />
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: displayColor, boxShadow: `0 0 6px 1px ${displayColor}`, flexShrink: 0 }} />
               <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">Neural Alpha</span>
-              <span className="ml-auto text-[10px] font-mono font-semibold" style={{ color: orbColor }}>
+              <span className="ml-auto text-[10px] font-mono font-semibold" style={{ color: displayColor }}>
                 {pts}/{maxPts}
               </span>
             </div>

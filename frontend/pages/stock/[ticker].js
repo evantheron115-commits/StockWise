@@ -78,12 +78,12 @@ export default function StockPage() {
         <div className="max-w-5xl mx-auto px-4 py-16 text-center relative" style={{ zIndex: 1 }}>
           <p className="text-gray-600 text-sm font-mono animate-pulse">
             {isWaking
-              ? `Waking the Sovereign Engine for ${ticker?.toUpperCase()}…`
+              ? `Optimizing Data Stream for ${ticker?.toUpperCase()}…`
               : `Loading ${ticker?.toUpperCase()}...`}
           </p>
           {isWaking && (
             <p className="text-gray-700 text-xs font-mono mt-2">
-              Server is starting up — this takes up to 30 seconds
+              Establishing connection — retrying automatically
             </p>
           )}
         </div>
@@ -158,7 +158,7 @@ export default function StockPage() {
         {/* Neural Alpha orb — shown once financials are loaded, sits between header and tabs */}
         {!financialsLoading && financials && (
           <div className="flex items-center gap-2 mb-5">
-            <NeuralAlpha company={company} financials={financials} />
+            <NeuralAlpha company={company} financials={financials} isStale={isStale} />
             <span className="text-[10px] text-gray-700 font-mono">neural alpha</span>
           </div>
         )}

@@ -121,3 +121,16 @@ CREATE TABLE IF NOT EXISTS watchlist (
 );
 
 CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id);
+
+-- Ticker data fortress: full JSONB snapshots with per-column TTL
+-- Serves data instantly even when the FMP API is unreachable (Railway cold start)
+CREATE TABLE IF NOT EXISTS ticker_cache (
+  ticker                VARCHAR(20) PRIMARY KEY,
+  company_json          JSONB,
+  company_cached_at     TIMESTAMPTZ,
+  financials_json       JSONB,
+  financials_cached_at  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ticker_cache_company_age   ON ticker_cache(company_cached_at);
+CREATE INDEX IF NOT EXISTS idx_ticker_cache_financials_age ON ticker_cache(financials_cached_at);

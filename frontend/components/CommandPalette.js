@@ -4,6 +4,16 @@ import { useRouter } from 'next/router';
 import { searchStocks } from '../lib/api';
 import { TOP_TICKERS } from '../constants/tickers';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const preHeatFired = new Set(); // only ping once per session per 3-char prefix
+
+function preHeat(query) {
+  const key = query.slice(0, 3).toUpperCase();
+  if (preHeatFired.has(key)) return;
+  preHeatFired.add(key);
+  fetch(`${API_BASE}/health`, { method: 'HEAD', cache: 'no-store' }).catch(() => {});
+}
+
 const SECTOR_LEADERS = [
   { ticker: 'AAPL',  name: 'Apple',       sector: 'Tech' },
   { ticker: 'MSFT',  name: 'Microsoft',   sector: 'Tech' },
@@ -74,6 +84,8 @@ export default function CommandPalette() {
   useEffect(() => {
     clearTimeout(debounceRef.current);
     if (!query.trim() || localResults.length >= 4) { setResults([]); return; }
+    // Pre-heat: wake the backend the moment the user has typed 3 chars
+    if (query.trim().length >= 3) preHeat(query.trim());
     debounceRef.current = setTimeout(async () => {
       setFetching(true);
       try { setResults(await searchStocks(query)); }

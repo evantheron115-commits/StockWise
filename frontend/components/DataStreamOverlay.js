@@ -8,7 +8,7 @@ export default function DataStreamOverlay() {
     Array.from({ length: COUNT }, (_, i) => ({
       id:       i,
       left:     `${(i / COUNT) * 100 + (Math.sin(i * 1.7) * 2)}%`,
-      delay:    `${((i * 0.31) % 4).toFixed(2)}s`,
+      delay:    i < 6 ? '0s' : `${((i * 0.31) % 2.5).toFixed(2)}s`,
       duration: `${(3.5 + (i % 5) * 0.6).toFixed(2)}s`,
       chars:    Array.from({ length: 9 }, (__, j) =>
         SYMBOLS[(i * 3 + j * 7) % SYMBOLS.length]

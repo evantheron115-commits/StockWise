@@ -1,7 +1,8 @@
 'use strict';
 const fmp = require('../services/fmp');
 const polygon = require('../services/polygon');
-const { getCache, setCache, withDedup, TTL } = require('../utils/cache');
+const { getCache, setCache, deleteCache, withDedup, TTL } = require('../utils/cache');
+const tc = require('../models/TickerCache');
 const {
   normalizeCompany,
   normalizeIncomeStatement,
@@ -32,11 +33,31 @@ function validateTicker(ticker, res) {
 // requests, falls back to the DB, and writes through to cache on success.
 // Route handlers and getFullSpectrum both delegate to these.
 
-async function _fetchCompany(ticker) {
+async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
   const cacheKey = `company:${ticker}`;
+
+  // ── 1. Hot cache (Redis / in-memory) — sub-millisecond ───────────────────────
   const cached = await getCache(cacheKey);
   if (cached) return { data: cached, source: 'cache' };
 
+  // ── 2. DB Fortress Cache — instant even when FMP API is unreachable ──────────
+  if (!skipDbCache) {
+    const dbHit = await tc.getTickerCacheCompany(ticker);
+    if (dbHit) {
+      if (dbHit.isFresh) {
+        // Fresh enough — warm Redis and serve
+        await setCache(cacheKey, dbHit.data, TTL.COMPANY);
+      } else {
+        // Stale — serve immediately, silently refresh in background
+        setImmediate(() =>
+          _fetchCompany(ticker, { skipDbCache: true }).catch(() => {})
+        );
+      }
+      return { data: dbHit.data, source: 'db' };
+    }
+  }
+
+  // ── 3. API fetch (deduped — only one concurrent request per ticker) ──────────
   const company = await withDedup(cacheKey, async () => {
     try {
       const [profileData, quoteData] = await Promise.all([
@@ -70,9 +91,6 @@ async function _fetchCompany(ticker) {
         c.peRatio       = q.pe                ?? null;
         c.eps           = q.eps               ?? null;
 
-        // Sanity-check P/E: API occasionally returns 0, negative, or
-        // astronomically wrong values for unprofitable/special companies.
-        // When the raw value looks like an outlier, recompute from price/EPS.
         if (c.peRatio !== null && (c.peRatio <= 0 || c.peRatio > 5000)) {
           c.peRatio = (c.price > 0 && c.eps > 0) ? +(c.price / c.eps).toFixed(2) : null;
         }
@@ -90,7 +108,9 @@ async function _fetchCompany(ticker) {
         }
       } catch { /* Polygon down — FMP data is sufficient */ }
 
+      // Persist to both legacy table and DB fortress
       db.upsertCompany(c).catch((e) => console.error('[DB] upsertCompany:', e.message));
+      tc.setTickerCacheCompany(ticker, c).catch((e) => console.error('[TickerCache] company:', e.message));
       await setCache(cacheKey, c, TTL.COMPANY);
       return c;
 
@@ -106,11 +126,29 @@ async function _fetchCompany(ticker) {
   return { data: company, source: 'api' };
 }
 
-async function _fetchFinancials(ticker) {
+async function _fetchFinancials(ticker, { skipDbCache = false } = {}) {
   const cacheKey = `financials:${ticker}`;
+
+  // ── 1. Hot cache ──────────────────────────────────────────────────────────────
   const cached = await getCache(cacheKey);
   if (cached) return { data: cached, source: 'cache' };
 
+  // ── 2. DB Fortress Cache ──────────────────────────────────────────────────────
+  if (!skipDbCache) {
+    const dbHit = await tc.getTickerCacheFinancials(ticker);
+    if (dbHit) {
+      if (dbHit.isFresh) {
+        await setCache(cacheKey, dbHit.data, TTL.FINANCIALS);
+      } else {
+        setImmediate(() =>
+          _fetchFinancials(ticker, { skipDbCache: true }).catch(() => {})
+        );
+      }
+      return { data: dbHit.data, source: 'db' };
+    }
+  }
+
+  // ── 3. API fetch ──────────────────────────────────────────────────────────────
   const data = await withDedup(cacheKey, async () => {
     try {
       const [incomeRaw, balanceRaw, cashflowRaw] = await Promise.all([
@@ -132,6 +170,9 @@ async function _fetchFinancials(ticker) {
       ];
       db.upsertFinancials(ticker, allRows).catch((e) =>
         console.error('[DB] upsertFinancials:', e.message)
+      );
+      tc.setTickerCacheFinancials(ticker, result).catch((e) =>
+        console.error('[TickerCache] financials:', e.message)
       );
       await setCache(cacheKey, result, TTL.FINANCIALS);
       return result;
