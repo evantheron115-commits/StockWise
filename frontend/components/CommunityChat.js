@@ -12,7 +12,17 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function Avatar({ name }) {
+function Avatar({ name, image }) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt={name || 'User'}
+        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+        style={{ boxShadow: '0 0 0 1.5px rgba(99,102,241,0.4)' }}
+      />
+    );
+  }
   const initials = (name || '?').slice(0, 2).toUpperCase();
   return (
     <div className="w-8 h-8 rounded-full bg-brand-500/20 border border-brand-500/30 flex items-center justify-center flex-shrink-0">
@@ -103,7 +113,7 @@ export default function CommunityChat({ ticker }) {
         {status === 'loading' ? null : session ? (
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="flex gap-3">
-              <Avatar name={session.user?.name || session.user?.email} />
+              <Avatar name={session.user?.name || session.user?.email} image={session.user?.image || session.user?.avatar} />
               <div className="flex-1">
                 <textarea
                   ref={textareaRef}
@@ -174,16 +184,27 @@ export default function CommunityChat({ ticker }) {
             No posts yet. Be the first to share your thoughts on {ticker}.
           </p>
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="space-y-3">
             {posts.map((post) => (
-              <div key={post.id} className="py-4 first:pt-0 last:pb-0 flex gap-3">
-                <Avatar name={post.user_name} />
+              <div key={post.id} className="flex gap-3">
+                <Avatar name={post.user_name} image={post.user_avatar} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-xs font-medium text-gray-300">{post.user_name}</span>
+                    <span className="text-xs font-semibold text-amber-400/90">{post.user_name}</span>
                     <span className="text-[10px] text-gray-600">{timeAgo(post.created_at)}</span>
                   </div>
-                  <p className="text-sm text-gray-400 whitespace-pre-wrap break-words">{post.content}</p>
+                  {/* Frosted glass message bubble */}
+                  <div
+                    className="rounded-xl rounded-tl-sm px-3 py-2 text-sm text-gray-300 whitespace-pre-wrap break-words"
+                    style={{
+                      background:           'rgba(255,255,255,0.04)',
+                      backdropFilter:       'blur(8px)',
+                      WebkitBackdropFilter: 'blur(8px)',
+                      border:               '1px solid rgba(255,255,255,0.06)',
+                    }}
+                  >
+                    {post.content}
+                  </div>
                 </div>
               </div>
             ))}

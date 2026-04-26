@@ -219,3 +219,9 @@ body.palette-open #__next {
   0%, 100% { transform: scale(1); }
   50%       { transform: scale(1.02); }
 }
+
+/* NeuralAlpha orb: slow glow pulse */
+@keyframes neural-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.6; transform: scale(1.35); }
+}

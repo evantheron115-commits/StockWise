@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import FinancialSkeleton from './FinancialSkeleton';
 import RatioHeatmap from './RatioHeatmap';
 import { useSpatialHaptic } from '../lib/useSpatialHaptic';
+import { filterRows } from '../lib/dataGuard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,12 +73,14 @@ function Badge({ rating }) {
 // ── Section component ─────────────────────────────────────────────────────────
 
 function Section({ title, rows }) {
-  const ref = useSpatialHaptic(0.2);
+  const ref     = useSpatialHaptic(0.2);
+  const visible = filterRows(rows);
+  if (visible.length === 0) return null;
   return (
     <div className="card" ref={ref}>
       <h3 className="text-sm font-semibold text-white mb-4">{title}</h3>
       <div className="divide-y divide-white/[0.04]">
-        {rows.map(({ label, value, badge, note, heatmap }, i) => (
+        {visible.map(({ label, value, badge, note, heatmap }, i) => (
           <div
             key={label}
             className="stagger-row flex items-center justify-between py-2.5 first:pt-0 last:pb-0 gap-3"
@@ -106,7 +109,7 @@ function Section({ title, rows }) {
 
 // ── Trend bar: shows last 3 years of a margin ─────────────────────────────────
 
-function TrendRow({ label, values }) {
+function TrendRow({ label, values, years }) {
   const valid = values.filter((v) => v != null && !isNaN(v));
   if (!valid.length) return null;
 
@@ -115,8 +118,8 @@ function TrendRow({ label, values }) {
   return (
     <div>
       <p className="text-xs text-gray-500 mb-2">{label}</p>
-      {/* Labels in their own fixed row — zero overlap with bars regardless of bar height */}
-      <div className="flex gap-1 mb-1.5">
+      {/* Value labels above bars */}
+      <div className="flex gap-1 mb-1">
         {values.map((v, i) => (
           <div key={i} className="flex-1 text-center">
             {v != null && !isNaN(v) ? (
@@ -142,6 +145,18 @@ function TrendRow({ label, values }) {
           );
         })}
       </div>
+      {/* Year labels sit below bars — one per column */}
+      {years?.length > 0 && (
+        <div className="flex gap-1 mt-1">
+          {values.map((_, i) => (
+            <div key={i} className="flex-1 text-center">
+              <span className="text-[8px] font-mono text-gray-700 block leading-tight tracking-tight">
+                {years[i] || ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -280,9 +295,9 @@ export default function KeyRatios({ financials, company }) {
             </span>
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-            <TrendRow label="Gross Margin"     values={trends.grossMargins} />
-            <TrendRow label="Operating Margin" values={trends.opMargins} />
-            <TrendRow label="Net Margin"        values={trends.netMargins} />
+            <TrendRow label="Gross Margin"     values={trends.grossMargins} years={trends.years} />
+            <TrendRow label="Operating Margin" values={trends.opMargins}    years={trends.years} />
+            <TrendRow label="Net Margin"        values={trends.netMargins}   years={trends.years} />
           </div>
         </div>
       )}

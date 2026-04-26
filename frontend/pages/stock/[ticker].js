@@ -12,6 +12,7 @@ import CompanySummary    from '../../components/CompanySummary';
 import DataStreamOverlay from '../../components/DataStreamOverlay';
 import KeyRatios         from '../../components/KeyRatios';
 import CommunityChat     from '../../components/CommunityChat';
+import NeuralAlpha       from '../../components/NeuralAlpha';
 
 const TABS = [
   { id: 'price',      label: 'Price + Chart' },
@@ -146,6 +147,14 @@ export default function StockPage() {
         <div style={{ opacity: isStale ? 0.82 : 1, transition: 'opacity 0.35s ease' }}>
           <CompanyHeader company={company} />
         </div>
+
+        {/* Neural Alpha orb — only shown once financials are loaded */}
+        {!financialsLoading && financials && (
+          <div className="flex items-center gap-2 mb-4 -mt-2">
+            <NeuralAlpha company={company} financials={financials} />
+            <span className="text-[10px] text-gray-700 font-mono">neural alpha</span>
+          </div>
+        )}
 
         {/* Tab navigation — liquid mercury indicator */}
         <div className="relative flex border-b border-gray-800 mb-6 gap-1 overflow-x-auto">
