@@ -3,6 +3,7 @@ const fmp = require('../services/fmp');
 const polygon = require('../services/polygon');
 const { getCache, setCache, deleteCache, withDedup, TTL } = require('../utils/cache');
 const tc = require('../models/TickerCache');
+const { tickerVariants } = require('../utils/sanitizer');
 const {
   normalizeCompany,
   normalizeIncomeStatement,
@@ -12,6 +13,36 @@ const {
 } = require('../utils/normalize');
 const { calculateDCF } = require('../utils/dcf');
 const db = require('../db/queries');
+
+// Build a minimal company object from Polygon ticker details.
+// Used as Phase-2 fallback when FMP returns empty for a valid ticker.
+async function _companyFromPolygon(ticker) {
+  const details = await polygon.fetchTickerDetails(ticker);
+  const r = details?.results;
+  if (!r?.ticker) return null;
+  return {
+    ticker:            r.ticker,
+    name:              r.name              || ticker,
+    exchange:          r.primary_exchange  || '',
+    sector:            r.sic_description   || '',
+    industry:          r.sic_description   || '',
+    description:       r.description       || '',
+    currency:          r.currency_name     ? r.currency_name.toUpperCase() : 'USD',
+    country:           r.locale === 'us'   ? 'US' : (r.locale || ''),
+    website:           r.homepage_url      || '',
+    price:             null,
+    marketCap:         r.market_cap        || null,
+    sharesOutstanding: r.share_class_shares_outstanding || null,
+    beta:              null,
+    peRatio:           null,
+    eps:               null,
+    changePercent:     null,
+    high52w:           null,
+    low52w:            null,
+    avgVolume:         null,
+    _dataSource:       'polygon_snapshot',
+  };
+}
 
 function sendRateLimit(res) {
   return res.status(429).json({
@@ -36,19 +67,17 @@ function validateTicker(ticker, res) {
 async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
   const cacheKey = `company:${ticker}`;
 
-  // ── 1. Hot cache (Redis / in-memory) — sub-millisecond ───────────────────────
+  // ── 1. Hot cache (Redis / in-memory) ─────────────────────────────────────────
   const cached = await getCache(cacheKey);
   if (cached) return { data: cached, source: 'cache' };
 
-  // ── 2. DB Fortress Cache — instant even when FMP API is unreachable ──────────
+  // ── 2. DB Fortress — serves even when FMP is unreachable ─────────────────────
   if (!skipDbCache) {
     const dbHit = await tc.getTickerCacheCompany(ticker);
     if (dbHit) {
       if (dbHit.isFresh) {
-        // Fresh enough — warm Redis and serve
         await setCache(cacheKey, dbHit.data, TTL.COMPANY);
       } else {
-        // Stale — serve immediately, silently refresh in background
         setImmediate(() =>
           _fetchCompany(ticker, { skipDbCache: true }).catch(() => {})
         );
@@ -57,29 +86,66 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
     }
   }
 
-  // ── 3. API fetch (deduped — only one concurrent request per ticker) ──────────
+  // ── 3. Live API fetch (deduped) ───────────────────────────────────────────────
   const company = await withDedup(cacheKey, async () => {
+    // Phase 1: try all ticker variants against FMP (handles BRK.B / BRK-B etc.)
+    const variants = tickerVariants(ticker);
+    let profileData = null;
+    let usedTicker  = ticker;
+
+    for (const v of variants) {
+      try {
+        const data = await fmp.fetchCompanyProfile(v);
+        if (data?.length) { profileData = data; usedTicker = v; break; }
+      } catch (e) {
+        if (e.isRateLimit) throw e;
+        console.warn(`[_fetchCompany] FMP profile failed for variant ${v}:`, e.message);
+      }
+    }
+
+    // Phase 2: Polygon ticker details fallback
+    if (!profileData?.length) {
+      console.warn(`[_fetchCompany] FMP returned empty for all variants of ${ticker} — trying Polygon`);
+      try {
+        const polyCompany = await _companyFromPolygon(usedTicker);
+        if (polyCompany) {
+          try {
+            const prev = await polygon.fetchPreviousClose(usedTicker);
+            if (prev?.resultsCount > 0) {
+              polyCompany.price         = prev.results[0].c   ?? null;
+              polyCompany.changePercent = prev.results[0].todaysChangePerc ?? null;
+            }
+          } catch { /* price enrichment optional */ }
+          db.upsertCompany(polyCompany).catch(() => {});
+          tc.setTickerCacheCompany(ticker, polyCompany).catch(() => {});
+          await setCache(cacheKey, polyCompany, TTL.COMPANY);
+          return polyCompany;
+        }
+      } catch (polyErr) {
+        console.warn(`[_fetchCompany] Polygon fallback failed for ${ticker}:`, polyErr.message);
+      }
+
+      // Phase 3: DB snapshot (stale but better than nothing)
+      const snap = await tc.getTickerCacheCompany(ticker);
+      if (snap) { await setCache(cacheKey, snap.data, TTL.COMPANY); return snap.data; }
+      const dbRow = await db.getCompanyFromDB(ticker);
+      if (dbRow) { await setCache(cacheKey, dbRow, TTL.COMPANY); return dbRow; }
+
+      const e = new Error(`Ticker "${ticker}" not found.`);
+      e.status = 404;
+      throw e;
+    }
+
+    const c = normalizeCompany(profileData);
+    if (!c) {
+      const e = new Error(`Ticker "${ticker}" not found.`);
+      e.status = 404;
+      throw e;
+    }
+
+    // Enrich with real-time quote
     try {
-      const [profileData, quoteData] = await Promise.all([
-        fmp.fetchCompanyProfile(ticker),
-        fmp.fetchQuote(ticker),
-      ]);
-
-      if (!profileData?.length) {
-        const dbRow = await db.getCompanyFromDB(ticker);
-        if (dbRow) { await setCache(cacheKey, dbRow, TTL.COMPANY); return dbRow; }
-        const e = new Error(`Ticker "${ticker}" not found.`);
-        e.status = 404;
-        throw e;
-      }
-
-      const c = normalizeCompany(profileData);
-      if (!c) {
-        const e = new Error(`Ticker "${ticker}" not found.`);
-        e.status = 404;
-        throw e;
-      }
-
+      const quoteData = await fmp.fetchQuote(usedTicker);
       if (quoteData?.length) {
         const q = quoteData[0];
         c.price         = q.price            ?? c.price;
@@ -95,32 +161,42 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
           c.peRatio = (c.price > 0 && c.eps > 0) ? +(c.price / c.eps).toFixed(2) : null;
         }
       }
-
-      try {
-        const prevClose = await polygon.fetchPreviousClose(ticker);
-        if (prevClose?.resultsCount > 0) {
-          const p = prevClose.results[0];
-          c.prevClose = p.c ?? null;
-          c.openPrice = p.o ?? null;
-          c.dayHigh   = p.h ?? null;
-          c.dayLow    = p.l ?? null;
-          c.volume    = p.v ?? null;
-        }
-      } catch { /* Polygon down — FMP data is sufficient */ }
-
-      // Persist to both legacy table and DB fortress
-      db.upsertCompany(c).catch((e) => console.error('[DB] upsertCompany:', e.message));
-      tc.setTickerCacheCompany(ticker, c).catch((e) => console.error('[TickerCache] company:', e.message));
-      await setCache(cacheKey, c, TTL.COMPANY);
-      return c;
-
-    } catch (apiErr) {
-      if (apiErr.isRateLimit || apiErr.status === 404) throw apiErr;
-      console.warn(`[_fetchCompany] API error for ${ticker}, trying DB:`, apiErr.message);
-      const dbRow = await db.getCompanyFromDB(ticker);
-      if (dbRow) { await setCache(cacheKey, dbRow, TTL.COMPANY); return dbRow; }
-      throw apiErr;
+    } catch (qErr) {
+      console.warn(`[_fetchCompany] Quote fetch failed for ${ticker}:`, qErr.message);
     }
+
+    // Enrich with Polygon prev-close
+    try {
+      const prevClose = await polygon.fetchPreviousClose(usedTicker);
+      if (prevClose?.resultsCount > 0) {
+        const p = prevClose.results[0];
+        c.prevClose = p.c ?? null;
+        c.openPrice = p.o ?? null;
+        c.dayHigh   = p.h ?? null;
+        c.dayLow    = p.l ?? null;
+        c.volume    = p.v ?? null;
+      }
+    } catch { /* optional enrichment */ }
+
+    // Zero-dash: compute missing values from available fields
+    if (!c.marketCap && c.price > 0 && c.sharesOutstanding > 0)
+      c.marketCap = c.price * c.sharesOutstanding;
+    if ((!c.peRatio || c.peRatio <= 0) && c.price > 0 && c.eps > 0)
+      c.peRatio = +(c.price / c.eps).toFixed(2);
+
+    db.upsertCompany(c).catch((e) => console.error('[DB] upsertCompany:', e.message));
+    tc.setTickerCacheCompany(ticker, c).catch((e) => console.error('[TickerCache]:', e.message));
+    await setCache(cacheKey, c, TTL.COMPANY);
+    return c;
+  }).catch(async (apiErr) => {
+    if (apiErr.isRateLimit || apiErr.status === 404) throw apiErr;
+    console.error(`[_fetchCompany] All sources failed for ${ticker}:`, apiErr.message);
+    // Emergency: use whatever DB has, even if stale
+    const snap = await tc.getTickerCacheCompany(ticker);
+    if (snap) { await setCache(cacheKey, snap.data, TTL.COMPANY); return snap.data; }
+    const dbRow = await db.getCompanyFromDB(ticker);
+    if (dbRow) { await setCache(cacheKey, dbRow, TTL.COMPANY); return dbRow; }
+    throw apiErr;
   });
 
   return { data: company, source: 'api' };

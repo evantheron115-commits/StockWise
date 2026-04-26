@@ -107,23 +107,29 @@ export function useTickerData(ticker) {
           })
           .catch((err) => {
             if (loadId.current !== id) return;
-            if (err.isRateLimit) {
+
+            const status   = err.response?.status;
+            const isNotFound   = status === 404;
+            const isRateLimit  = err.isRateLimit || status === 429;
+            // Anything that isn't a definitive "ticker not found" should be retried:
+            // network timeouts, Railway cold-start 500s, ECONNABORTED, ERR_CANCELED, etc.
+            const isRetryable  = !isNotFound && !isRateLimit;
+
+            if (isRateLimit) {
               setRateLimited(true);
               setError(err.message || 'API rate limit reached. Please wait a few minutes and try again.');
               setLoading(false);
-            } else if (err.isNetworkError || err.code === 'ECONNABORTED') {
-              // Backend is sleeping — retry automatically
-              if (retryCount.current < MAX_RETRIES) {
-                retryCount.current += 1;
-                setIsWaking(true);
-                retryRef.current = setTimeout(attemptFetch, RETRY_DELAY);
-              } else {
-                setIsWaking(false);
-                setError(`Server is not responding. Please try again in a moment.`);
-                setLoading(false);
-              }
+            } else if (isNotFound) {
+              setIsWaking(false);
+              setError(`"${t}" was not found. Double-check the ticker symbol.`);
+              setLoading(false);
+            } else if (isRetryable && retryCount.current < MAX_RETRIES) {
+              retryCount.current += 1;
+              setIsWaking(true);
+              retryRef.current = setTimeout(attemptFetch, RETRY_DELAY);
             } else {
-              setError(`Could not find data for "${t}". Check the ticker and try again.`);
+              setIsWaking(false);
+              setError(`Could not load "${t}". Please try again.`);
               setLoading(false);
             }
           });

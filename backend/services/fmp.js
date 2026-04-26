@@ -23,8 +23,8 @@ function makeRateLimitError(message) {
   return err;
 }
 
-// Single attempt with fast timeout. Never retries rate-limit responses.
-async function fetchWithRetry(url, retries = 1, timeoutMs = 8000) {
+// Single attempt with timeout. Never retries rate-limit responses.
+async function fetchWithRetry(url, retries = 1, timeoutMs = 12000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`[FMP] GET ${url.replace(/apikey=[^&]+/, 'apikey=***')}`);
@@ -42,6 +42,14 @@ async function fetchWithRetry(url, retries = 1, timeoutMs = 8000) {
 
       return response.data;
     } catch (err) {
+      // Log exact failure details so Railway logs show the real cause
+      if (err.response) {
+        console.error(`[FMP] HTTP ${err.response.status} for ${url.replace(/apikey=[^&]+/, 'apikey=***')}:`,
+          JSON.stringify(err.response.data).slice(0, 300));
+      } else {
+        console.error(`[FMP] Network error (${err.code || err.message}) for ${url.replace(/apikey=[^&]+/, 'apikey=***')}`);
+      }
+
       // HTTP 429 — never retry
       if (err.response?.status === 429) throw makeRateLimitError();
       // Rate limit detected in body — never retry
