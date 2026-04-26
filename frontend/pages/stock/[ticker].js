@@ -148,9 +148,9 @@ export default function StockPage() {
           <CompanyHeader company={company} />
         </div>
 
-        {/* Neural Alpha orb — only shown once financials are loaded */}
+        {/* Neural Alpha orb — shown once financials are loaded, sits between header and tabs */}
         {!financialsLoading && financials && (
-          <div className="flex items-center gap-2 mb-4 -mt-2">
+          <div className="flex items-center gap-2 mb-5">
             <NeuralAlpha company={company} financials={financials} />
             <span className="text-[10px] text-gray-700 font-mono">neural alpha</span>
           </div>

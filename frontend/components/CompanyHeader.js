@@ -75,8 +75,9 @@ export default function CompanyHeader({ company }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 pt-4 border-t border-white/[0.06]">
         {[
           ['Market Cap',  fmtMktCap(company.marketCap)],
-          ['P/E Ratio',   company.peRatio?.toFixed(1) ?? '—'],
-          ['EPS (TTM)',   company.eps ? `$${company.eps.toFixed(2)}` : '—'],
+          // Compute P/E from price÷EPS when the API omits it
+          ['P/E Ratio',   fmtPE(company.peRatio, company.price, company.eps)],
+          ['EPS (TTM)',   company.eps != null ? `$${company.eps.toFixed(2)}` : '—'],
           ['Beta',        company.beta?.toFixed(2) ?? '—'],
         ].map(([label, value]) => (
           <div key={label}>
@@ -146,4 +147,12 @@ function fmtMktCap(n) {
   if (n >= 1e9)  return `$${(n / 1e9).toFixed(2)}B`;
   if (n >= 1e6)  return `$${(n / 1e6).toFixed(2)}M`;
   return `$${n}`;
+}
+
+function fmtPE(peRatio, price, eps) {
+  // Use API value if valid
+  if (peRatio != null && peRatio > 0 && peRatio <= 5000) return peRatio.toFixed(1);
+  // Fall back to price ÷ EPS when API omits it
+  if (price > 0 && eps > 0) return (price / eps).toFixed(1);
+  return '—';
 }
