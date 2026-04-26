@@ -1,9 +1,8 @@
 name: iOS → App Store
 
-# Triggers: every push to main, or manually from Actions tab
+# Manual trigger only — re-enable push trigger once Apple secrets are configured
+# (P12_CERTIFICATE, P12_PASSWORD, PROVISIONING_PROFILE, APPLE_TEAM_ID, ASC_PRIVATE_KEY, ASC_KEY_ID, ASC_ISSUER_ID)
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 env:
