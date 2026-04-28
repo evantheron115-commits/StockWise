@@ -5,13 +5,25 @@ import { searchStocks } from '../lib/api';
 import { TOP_TICKERS } from '../constants/tickers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-const preHeatFired = new Set(); // only ping once per session per 3-char prefix
+const preHeatFired   = new Set(); // only ping once per session per 3-char prefix
+const prefetchedSet  = new Set(); // only prefetch each ticker once per session
 
 function preHeat(query) {
   const key = query.slice(0, 3).toUpperCase();
   if (preHeatFired.has(key)) return;
   preHeatFired.add(key);
   fetch(`${API_BASE}/health`, { method: 'HEAD', cache: 'no-store' }).catch(() => {});
+}
+
+// Fires on hover — warms the backend company cache so the page loads instantly on click.
+// Rate-limited to once per ticker per session; silently discards the response.
+function prefetchCompany(ticker) {
+  if (!ticker || prefetchedSet.has(ticker)) return;
+  prefetchedSet.add(ticker);
+  fetch(`${API_BASE}/api/company/${ticker.toUpperCase()}`, {
+    cache: 'no-store',
+    headers: { 'X-Prefetch': '1' },
+  }).catch(() => {});
 }
 
 const SECTOR_LEADERS = [
@@ -247,6 +259,7 @@ export default function CommandPalette() {
                       <button
                         key={r.ticker}
                         onClick={() => go(r.ticker)}
+                        onMouseEnter={() => prefetchCompany(r.ticker)}
                         className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
                       >
                         <div className="flex items-center gap-3 min-w-0">

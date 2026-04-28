@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getCompany, getFinancials } from '../lib/api';
+import { getFinancials } from '../lib/api';
+import { getCompanyWithFallback as getCompany } from '../lib/gateway';
 import { saveRecent } from '../components/CommandPalette';
 
 const SNAP_TTL         = 60 * 60 * 1000; // 60 min — matches backend quote cache

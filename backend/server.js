@@ -19,6 +19,7 @@ const authRoutes      = require('./routes/auth');
 const postsRoutes     = require('./routes/posts');
 const watchlistRoutes = require('./routes/watchlist');
 const autoMigrate     = require('./db/autoMigrate');
+const heartbeat       = require('./services/heartbeat');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -100,6 +101,7 @@ function startServer(port, attempt = 0) {
       console.warn(`⚠️  Started on port ${port} instead of ${BASE_PORT}.`);
       console.warn(`   Update frontend/.env.local → NEXT_PUBLIC_API_URL=http://localhost:${port}`);
     }
+    heartbeat.start(port);
   });
 
   server.on('error', (err) => {

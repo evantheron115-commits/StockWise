@@ -1,0 +1,44 @@
+name: Keep-Alive Sentinel
+
+# Pings the Railway backend from GitHub's cloud every 5 minutes.
+# This is a second heartbeat from an external region — independent of the
+# backend's own self-ping — so Railway never idles even during low traffic.
+#
+# Required GitHub secret:
+#   RAILWAY_BACKEND_URL — e.g. https://your-app.railway.app
+# Set it at: Settings → Secrets and variables → Actions → New repository secret
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Every 5 minutes (GitHub's minimum interval)
+  workflow_dispatch:        # Allow manual trigger for testing
+
+jobs:
+  pulse:
+    name: Ping Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Warm backend + DB connections
+        run: |
+          BACKEND="${{ secrets.RAILWAY_BACKEND_URL }}"
+
+          if [ -z "$BACKEND" ]; then
+            echo "⚠️  RAILWAY_BACKEND_URL secret not set — skipping ping"
+            exit 0
+          fi
+
+          echo "→ Pinging ${BACKEND}/api/health/keep-alive"
+          RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 35 "${BACKEND}/api/health/keep-alive" || echo "CURL_FAILED")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          echo "   Status : ${HTTP_CODE}"
+          echo "   Body   : ${BODY}"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Backend warm"
+          else
+            echo "⚠️  Backend returned ${HTTP_CODE} (may be waking from cold start)"
+          fi
