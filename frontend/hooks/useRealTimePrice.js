@@ -1,47 +1,50 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { getSocket, releaseSocket } from '../lib/socketClient';
 
-// Singleton socket — shared across all hook instances so we don't open
-// multiple connections when multiple components subscribe simultaneously.
-let _socket   = null;
-let _refCount = 0;
+const POLL_INTERVAL_MS = 30 * 1000; // HTTP fallback polls every 30s when socket is down
 
-function getSocket() {
-  if (typeof window === 'undefined') return null; // SSR guard
-  if (_socket) { _refCount++; return _socket; }
-
-  // Dynamic import keeps socket.io-client out of the SSR bundle
-  const { io } = require('socket.io-client');
-  _socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000', {
-    transports:           ['websocket', 'polling'],
-    reconnectionAttempts: 10,
-    reconnectionDelay:    2000,
-    autoConnect:          true,
-  });
-  _refCount = 1;
-  return _socket;
-}
-
-function releaseSocket() {
-  _refCount = Math.max(0, _refCount - 1);
-  if (_refCount === 0 && _socket) {
-    _socket.disconnect();
-    _socket = null;
-  }
-}
-
-// Returns live price data pushed from the backend via Socket.io.
-// Falls back gracefully if the WebSocket connection is unavailable —
-// components should still show the last HTTP-fetched price from props.
+// Returns live price data from Socket.io with automatic HTTP polling fallback.
+//
+// isLive === true  → socket is connected, price updates arrive in real time (~20s)
+// isLive === false → socket disconnected, polling HTTP every 30s until reconnect
+//
+// Use the `isLive` boolean to show/hide the bioluminescent green dot in the UI.
 export function useRealTimePrice(ticker) {
   const [price,         setPrice]         = useState(null);
   const [change,        setChange]        = useState(null);
   const [changePercent, setChangePercent] = useState(null);
-  const [connected,     setConnected]     = useState(false);
-  const tickerRef = useRef(ticker);
+  const [isLive,        setIsLive]        = useState(false);
 
-  useEffect(() => {
-    tickerRef.current = ticker;
-  }, [ticker]);
+  const tickerRef  = useRef(ticker);
+  const pollRef    = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => { tickerRef.current = ticker; }, [ticker]);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // HTTP fallback — polls the backend quote endpoint when socket is offline
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      const t = tickerRef.current;
+      if (!t || !mountedRef.current) return;
+      try {
+        const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+        const res  = await fetch(`${API}/api/company/${t.toUpperCase()}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const c    = json?.data;
+        if (!mountedRef.current) return;
+        if (c?.price         != null) setPrice(c.price);
+        if (c?.change        != null) setChange(c.change);
+        if (c?.changePercent != null) setChangePercent(c.changePercent);
+      } catch { /* network down — next poll will retry */ }
+    }, POLL_INTERVAL_MS);
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
 
   useEffect(() => {
     if (!ticker || typeof window === 'undefined') return;
@@ -51,7 +54,8 @@ export function useRealTimePrice(ticker) {
 
     function subscribe() {
       sock.emit('subscribe', t);
-      setConnected(true);
+      setIsLive(true);
+      stopPolling(); // socket is up — silence the HTTP fallback
     }
 
     function onPriceUpdate(data) {
@@ -62,23 +66,31 @@ export function useRealTimePrice(ticker) {
     }
 
     function onConnect()    { subscribe(); }
-    function onDisconnect() { setConnected(false); }
+
+    function onDisconnect() {
+      setIsLive(false);
+      startPolling(); // snap-back: begin HTTP polling until socket returns
+    }
 
     sock.on('price:update', onPriceUpdate);
     sock.on('connect',      onConnect);
     sock.on('disconnect',   onDisconnect);
 
-    // Subscribe immediately if already connected
-    if (sock.connected) subscribe();
+    if (sock.connected) {
+      subscribe();
+    } else {
+      startPolling(); // not yet connected — poll while socket handshakes
+    }
 
     return () => {
       sock.emit('unsubscribe', t);
       sock.off('price:update', onPriceUpdate);
       sock.off('connect',      onConnect);
       sock.off('disconnect',   onDisconnect);
+      stopPolling();
       releaseSocket();
     };
-  }, [ticker]);
+  }, [ticker, startPolling, stopPolling]);
 
-  return { price, change, changePercent, connected };
+  return { price, change, changePercent, isLive };
 }

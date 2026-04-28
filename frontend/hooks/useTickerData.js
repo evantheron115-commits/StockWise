@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { getFinancials } from '../lib/api';
 import { getCompanyWithFallback as getCompany } from '../lib/gateway';
 import { saveRecent } from '../components/CommandPalette';
+import { getSocket, releaseSocket } from '../lib/socketClient';
 
 const SNAP_TTL         = 60 * 60 * 1000; // 60 min — matches backend quote cache
 const RETRY_DELAY      = 6000;           // 6s between retries while backend wakes
@@ -178,6 +179,26 @@ export function useTickerData(ticker) {
     return () => {
       clearTimeout(retryRef.current);
       clearTimeout(finRetryRef.current);
+    };
+  }, [ticker]);
+
+  // Vanta-Glass: receive harvester push updates without user interaction
+  useEffect(() => {
+    if (!ticker || typeof window === 'undefined') return;
+    const t    = ticker.toUpperCase();
+    const sock = getSocket();
+    if (!sock) return;
+
+    function onCompanyUpdate(data) {
+      if (data.ticker !== t) return;
+      setCompany(data.company);
+      setIsStale(false);
+    }
+
+    sock.on('company:update', onCompanyUpdate);
+    return () => {
+      sock.off('company:update', onCompanyUpdate);
+      releaseSocket();
     };
   }, [ticker]);
 
