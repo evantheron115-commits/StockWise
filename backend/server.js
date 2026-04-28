@@ -8,9 +8,10 @@ if (missing.length) {
   process.exit(1);
 }
 
-const express = require('express');
-const cors    = require('cors');
-const helmet  = require('helmet');
+const http      = require('http');
+const express   = require('express');
+const cors      = require('cors');
+const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const companyRoutes   = require('./routes/company');
@@ -20,8 +21,10 @@ const postsRoutes     = require('./routes/posts');
 const watchlistRoutes = require('./routes/watchlist');
 const autoMigrate     = require('./db/autoMigrate');
 const heartbeat       = require('./services/heartbeat');
+const harvester       = require('./services/harvester');
+const sockets         = require('./utils/sockets');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 4000;
 
 // Trust Railway/Vercel reverse proxy so rate-limiter reads the real client IP
@@ -87,24 +90,30 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// ── Port binding with automatic fallback ──────────────────────────────────────
+// ── HTTP server + Socket.io ───────────────────────────────────────────────────
+
+const httpServer = http.createServer(app);
+sockets.init(httpServer);
+
+// ── Port binding with automatic fallback ─────────────────────────────────────
 
 const BASE_PORT   = parseInt(PORT);
 const MAX_RETRIES = 5;
 
 function startServer(port, attempt = 0) {
-  const server = app.listen(port);
+  httpServer.listen(port);
 
-  server.on('listening', () => {
+  httpServer.once('listening', () => {
     console.log(`\n✅ ValuBull backend running on http://localhost:${port}`);
     if (port !== BASE_PORT) {
       console.warn(`⚠️  Started on port ${port} instead of ${BASE_PORT}.`);
       console.warn(`   Update frontend/.env.local → NEXT_PUBLIC_API_URL=http://localhost:${port}`);
     }
     heartbeat.start(port);
+    harvester.start();
   });
 
-  server.on('error', (err) => {
+  httpServer.once('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (attempt >= MAX_RETRIES) {
         console.error(`❌ Ports ${BASE_PORT}–${BASE_PORT + MAX_RETRIES} are all in use. Free a port and try again.`);
@@ -113,8 +122,7 @@ function startServer(port, attempt = 0) {
       }
       const next = port + 1;
       console.warn(`⚠️  Port ${port} in use — trying ${next}...`);
-      server.close();
-      startServer(next, attempt + 1);
+      httpServer.close(() => startServer(next, attempt + 1));
     } else {
       console.error('❌ Server error:', err.message);
       process.exit(1);
