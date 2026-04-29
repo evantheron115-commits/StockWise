@@ -1,4 +1,5 @@
 const axios = require('axios');
+const log   = require('../utils/logger');
 
 /**
  * Financial Modeling Prep — Stable API
@@ -29,7 +30,7 @@ async function fetchWithRetry(url, retries = 1, timeoutMs = 12000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     const t0 = Date.now();
     try {
-      console.log(`[FMP] GET ${safeUrl}`);
+      log.info(`[FMP] GET ${safeUrl}`);
       const response = await axios.get(url, { timeout: timeoutMs });
       const ms = Date.now() - t0;
 
@@ -37,24 +38,22 @@ async function fetchWithRetry(url, retries = 1, timeoutMs = 12000) {
       if (response.data && response.data['Error Message']) {
         const msg   = response.data['Error Message'];
         const lower = msg.toLowerCase();
-        console.error(`[FMP] 200 but error body (${ms}ms): ${msg.slice(0, 200)}`);
+        log.error(`[FMP] 200 but error body (${ms}ms): ${msg.slice(0, 200)}`);
         if (RATE_LIMIT_PATTERNS.some((p) => lower.includes(p))) {
           throw makeRateLimitError(msg);
         }
         throw new Error(msg);
       }
 
-      console.log(`[FMP] 200 OK (${ms}ms) ${safeUrl}`);
+      log.info(`[FMP] 200 OK (${ms}ms) ${safeUrl}`);
       return response.data;
     } catch (err) {
       const ms = Date.now() - t0;
       if (err.response) {
-        console.error(
-          `[FMP] HTTP ${err.response.status} (${ms}ms) ${safeUrl} — ` +
-          JSON.stringify(err.response.data).slice(0, 200)
-        );
+        log.error(`[FMP] HTTP ${err.response.status} (${ms}ms) ${safeUrl} — ` +
+          JSON.stringify(err.response.data).slice(0, 200));
       } else if (!err.isRateLimit && !(err.code === 'ERR_CANCELED')) {
-        console.error(`[FMP] ${err.code || err.message} (${ms}ms) ${safeUrl}`);
+        log.error(`[FMP] ${err.code || err.message} (${ms}ms) ${safeUrl}`);
       }
 
       // HTTP 429 — never retry

@@ -8,6 +8,7 @@
 // Only genuine network failures (ECONNABORTED, ERR_CANCELED, no response) trigger the switch.
 
 import { api } from './api';
+import { warn } from './logger';
 
 async function withProxyFallback(railwayFn, proxyFn) {
   try {
@@ -19,7 +20,7 @@ async function withProxyFallback(railwayFn, proxyFn) {
 
     // Network failure or Railway unreachable — try Vercel proxy
     if (!err.response || err.isNetworkError) {
-      console.warn('[Gateway] Railway unreachable — routing to Vercel proxy');
+      warn('[Gateway] Railway unreachable — routing to Vercel proxy');
       return await proxyFn();
     }
 

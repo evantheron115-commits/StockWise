@@ -1,4 +1,5 @@
 const axios = require('axios');
+const log   = require('../utils/logger');
 
 const BASE_URL = 'https://api.polygon.io';
 const API_KEY = process.env.POLYGON_API_KEY;
@@ -6,7 +7,7 @@ const API_KEY = process.env.POLYGON_API_KEY;
 async function fetchWithRetry(url, retries = 1) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      console.log(`[Polygon] GET ${url}`);
+      log.info(`[Polygon] GET ${url}`);
       const response = await axios.get(url, {
         timeout: 6000,
         headers: { Authorization: `Bearer ${API_KEY}` },

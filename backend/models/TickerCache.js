@@ -1,5 +1,6 @@
 'use strict';
 const pool = require('../db/index');
+const log  = require('../utils/logger');
 
 const FRESH_HOURS = 4;
 const MAX_HOURS   = 24;
@@ -31,7 +32,7 @@ async function getTickerCacheCompany(ticker) {
     }, QUERY_TIMEOUT_MS);
   } catch (err) {
     pool.logStats('getCompany');
-    console.warn('[TickerCache] getCompany error:', err.message);
+    log.warn('[TickerCache] getCompany error', { err: err.message });
     return null;
   }
 }
@@ -47,7 +48,7 @@ async function setTickerCacheCompany(ticker, company) {
       [ticker.toUpperCase(), JSON.stringify(company)]
     ), QUERY_TIMEOUT_MS);
   } catch (err) {
-    console.warn('[TickerCache] setCompany error:', err.message);
+    log.warn('[TickerCache] setCompany error', { err: err.message });
   }
 }
 
@@ -67,7 +68,7 @@ async function getTickerCacheFinancials(ticker) {
     }, QUERY_TIMEOUT_MS);
   } catch (err) {
     pool.logStats('getFinancials');
-    console.warn('[TickerCache] getFinancials error:', err.message);
+    log.warn('[TickerCache] getFinancials error', { err: err.message });
     return null;
   }
 }
@@ -83,7 +84,7 @@ async function setTickerCacheFinancials(ticker, financials) {
       [ticker.toUpperCase(), JSON.stringify(financials)]
     ), QUERY_TIMEOUT_MS);
   } catch (err) {
-    console.warn('[TickerCache] setFinancials error:', err.message);
+    log.warn('[TickerCache] setFinancials error', { err: err.message });
   }
 }
 

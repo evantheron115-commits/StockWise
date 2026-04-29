@@ -1,4 +1,5 @@
 'use strict';
+const log = require('../utils/logger');
 const fmp = require('../services/fmp');
 const polygon = require('../services/polygon');
 const { getCache, setCache, deleteCache, withDedup, TTL } = require('../utils/cache');
@@ -94,24 +95,24 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
     let profileData = null;
     let usedTicker  = ticker;
 
-    console.log(`[company] Ticker variants to try for "${ticker}": ${variants.join(', ')}`);
+    log.info(`[company] Ticker variants to try for "${ticker}": ${variants.join(', ')}`);
     for (const v of variants) {
       try {
         const data = await fmp.fetchCompanyProfile(v);
         if (data?.length) {
-          console.log(`[company] FMP profile HIT for variant "${v}"`);
+          log.info(`[company] FMP profile HIT for variant "${v}"`);
           profileData = data; usedTicker = v; break;
         }
-        console.warn(`[company] FMP profile empty for variant "${v}"`);
+        log.warn(`[company] FMP profile empty for variant "${v}"`);
       } catch (e) {
         if (e.isRateLimit) throw e;
-        console.warn(`[company] FMP profile ERROR for variant "${v}": ${e.message}`);
+        log.warn(`[company] FMP profile ERROR for variant "${v}": ${e.message}`);
       }
     }
 
     // Phase 2: Polygon ticker details fallback
     if (!profileData?.length) {
-      console.warn(`[company] All FMP variants exhausted for "${ticker}" — trying Polygon`);
+      log.warn(`[company] All FMP variants exhausted for "${ticker}" — trying Polygon`);
       try {
         const polyCompany = await _companyFromPolygon(usedTicker);
         if (polyCompany) {
@@ -128,7 +129,7 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
           return polyCompany;
         }
       } catch (polyErr) {
-        console.warn(`[_fetchCompany] Polygon fallback failed for ${ticker}:`, polyErr.message);
+        log.warn(`[_fetchCompany] Polygon fallback failed for ${ticker}`, { err: polyErr.message });
       }
 
       // Phase 3: DB snapshot (stale but better than nothing)
@@ -171,7 +172,7 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
         }
       }
     } catch (qErr) {
-      console.warn(`[_fetchCompany] Quote fetch failed for ${ticker}:`, qErr.message);
+      log.warn(`[_fetchCompany] Quote fetch failed for ${ticker}`, { err: qErr.message });
     }
 
     // Enrich with Polygon prev-close
@@ -261,7 +262,7 @@ async function _fetchFinancials(ticker, { skipDbCache = false } = {}) {
 
     } catch (apiErr) {
       if (apiErr.isRateLimit) throw apiErr;
-      console.warn(`[_fetchFinancials] API error for ${ticker}, trying DB:`, apiErr.message);
+      log.warn(`[_fetchFinancials] API error for ${ticker}, trying DB`, { err: apiErr.message });
       const rows = await db.getFinancialsFromDB(ticker);
       if (rows.length) { await setCache(cacheKey, rows, TTL.FINANCIALS); return rows; }
       throw apiErr;
@@ -288,7 +289,7 @@ async function _fetchChart(ticker, years = 1) {
 
     } catch (apiErr) {
       if (apiErr.isRateLimit) throw apiErr;
-      console.warn(`[_fetchChart] API error for ${ticker}, trying DB:`, apiErr.message);
+      log.warn(`[_fetchChart] API error for ${ticker}, trying DB`, { err: apiErr.message });
       const rows = await db.getPricesFromDB(ticker, years);
       if (rows.length) { await setCache(cacheKey, rows, TTL.CHART); return rows; }
       throw apiErr;

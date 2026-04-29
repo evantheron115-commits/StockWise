@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import WatchlistButton from './WatchlistButton';
 import { hapticLight } from '../lib/haptics';
@@ -171,10 +172,13 @@ function CompanyLogo({ ticker, logoUrl, name }) {
 
   return (
     <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center flex-shrink-0 overflow-hidden border border-white/10">
-      <img
+      <Image
         src={logoUrl}
         alt={`${ticker} logo`}
-        className="w-9 h-9 object-contain"
+        width={36}
+        height={36}
+        priority
+        className="object-contain"
         onError={() => setFailed(true)}
       />
     </div>

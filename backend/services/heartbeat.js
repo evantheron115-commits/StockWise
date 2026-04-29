@@ -8,6 +8,7 @@
 
 const http = require('http');
 const pool = require('../db/index');
+const log  = require('../utils/logger');
 
 const PULSE_MS = 4 * 60 * 1000; // 4 minutes — just under Railway's 5-min idle cutoff
 
@@ -19,7 +20,7 @@ async function warmDB() {
     // No log on success — would spam every 4 min in prod logs
   } catch (err) {
     pool.logStats('heartbeat-warm');
-    console.warn('[Heartbeat] DB warm failed:', err.message);
+    log.warn('[Heartbeat] DB warm failed', { err: err.message });
   }
 }
 
@@ -36,7 +37,7 @@ function selfPing() {
       (res) => {
         res.resume(); // drain socket — required or it leaks
         if (res.statusCode !== 200) {
-          console.warn(`[Heartbeat] Self-ping returned ${res.statusCode}`);
+          log.warn(`[Heartbeat] Self-ping returned ${res.statusCode}`);
         }
         resolve(res.statusCode === 200);
       }
@@ -61,7 +62,7 @@ function start(port) {
     await Promise.all([selfPing(), warmDB()]);
   }, PULSE_MS);
 
-  console.log(`[Heartbeat] Immortal pulse started — interval ${PULSE_MS / 60000}min on port ${_port}`);
+  log.info(`[Heartbeat] Immortal pulse started — interval ${PULSE_MS / 60000}min on port ${_port}`);
 }
 
 module.exports = { start };

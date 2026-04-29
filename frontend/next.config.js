@@ -24,6 +24,31 @@ const nextConfig = {
     removeConsole: isMobileBuild ? { exclude: ['error'] } : false,
   },
 
+  // Whitelist external image domains for next/image optimization
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'financialmodelingprep.com' },
+    ],
+  },
+
+  // Long-lived cache headers for all public static assets
+  async headers() {
+    return [
+      {
+        source: '/icons/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/images/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/:file(.*\\.(?:ico|png|svg|webp|woff2?))',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+    ];
+  },
+
   // Static export for Capacitor — API routes are excluded (mobile calls Railway directly)
   ...(isMobileBuild ? {
     output:        'export',

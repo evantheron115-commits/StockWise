@@ -1,5 +1,6 @@
 'use strict';
 const Redis = require('ioredis');
+const log   = require('./logger');
 
 // ── In-Memory Fallback ─────────────────────────────────────────────────────────
 // Active whenever Redis is unavailable. Capped at MAX_ENTRIES to prevent
@@ -39,21 +40,21 @@ try {
   });
 
   redisClient.on('ready', () => {
-    if (!redisOK) console.log('[Cache] Redis connected ✓');
+    if (!redisOK) log.info('[Cache] Redis connected');
     redisOK = true;
   });
 
   redisClient.on('error', () => {
-    if (redisOK) console.warn('[Cache] Redis unavailable — using in-memory cache');
+    if (redisOK) log.warn('[Cache] Redis unavailable — using in-memory cache');
     redisOK = false;
   });
 
   redisClient.on('close', () => {
-    if (redisOK) console.warn('[Cache] Redis connection closed — using in-memory cache');
+    if (redisOK) log.warn('[Cache] Redis connection closed — using in-memory cache');
     redisOK = false;
   });
 } catch (err) {
-  console.warn('[Cache] Redis init failed — using in-memory cache:', err.message);
+  log.warn('[Cache] Redis init failed — using in-memory cache', { err: err.message });
 }
 
 // ── TTL Constants (seconds) ────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ const inFlight = new Map();
 
 async function withDedup(key, fetcher) {
   if (inFlight.has(key)) {
-    console.log(`[Cache] Coalescing duplicate request: ${key}`);
+    log.info(`[Cache] Coalescing duplicate request: ${key}`);
     return inFlight.get(key);
   }
   const p = fetcher().finally(() => inFlight.delete(key));
