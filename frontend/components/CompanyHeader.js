@@ -1,9 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import WatchlistButton from './WatchlistButton';
+import { hapticLight } from '../lib/haptics';
 
-export default function CompanyHeader({ company, financials }) {
-  const up = company.changePercent > 0;
-  const dn = company.changePercent < 0;
+export default function CompanyHeader({ company, financials, livePrice, liveChangePercent, isLive }) {
+  // Prefer live socket data when available
+  const displayPrice  = livePrice         ?? company.price;
+  const displayChange = liveChangePercent ?? company.changePercent;
+
+  // Haptic on price direction flip (green→red or red→green)
+  const prevDirectionRef = useRef(null);
+  useEffect(() => {
+    if (livePrice == null) return;
+    const dir = displayChange > 0 ? 'up' : displayChange < 0 ? 'dn' : 'flat';
+    if (prevDirectionRef.current && prevDirectionRef.current !== dir) hapticLight();
+    prevDirectionRef.current = dir;
+  }, [livePrice, displayChange]);
+
+  const up = displayChange > 0;
+  const dn = displayChange < 0;
 
   // Resolve EPS: quote field first, then income statement
   const latestIncome = financials?.income?.[0];
@@ -62,17 +76,26 @@ export default function CompanyHeader({ company, financials }) {
                   animation: 'light-leak 4s ease-in-out infinite',
                 }}
               />
-              <div
-                className="text-3xl font-mono font-extrabold text-white relative"
-                style={{ textShadow: '0 0 15px rgba(99,102,241,0.50)', letterSpacing: '-0.05em', fontVariantNumeric: 'tabular-nums' }}
-              >
-                ${company.price?.toFixed(2) ?? '—'}
+              <div className="flex items-center gap-2 justify-end">
+                {/* Bioluminescent live dot — visible only when socket stream is active */}
+                {isLive && (
+                  <span className="relative flex h-2 w-2 flex-shrink-0" aria-label="Live">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" style={{ boxShadow: '0 0 6px #4ade80' }} />
+                  </span>
+                )}
+                <div
+                  className="text-3xl font-mono font-extrabold text-white relative"
+                  style={{ textShadow: '0 0 15px rgba(99,102,241,0.50)', letterSpacing: '-0.05em', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  ${displayPrice?.toFixed(2) ?? '—'}
+                </div>
               </div>
             </div>
-            {company.changePercent != null && (
+            {displayChange != null && (
               <div className={`text-sm font-mono mt-0.5 ${up ? 'up' : dn ? 'down' : 'neutral'}`}>
                 {up ? '▲' : dn ? '▼' : ''}{' '}
-                {up ? '+' : ''}{company.changePercent?.toFixed(2)}%
+                {up ? '+' : ''}{displayChange?.toFixed(2)}%
                 <span className="text-gray-600 text-xs ml-1">today</span>
               </div>
             )}

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Head from 'next/head';
 import { useTickerData } from '../../hooks/useTickerData';
+import { useRealTimePrice } from '../../hooks/useRealTimePrice';
 import { hapticLight } from '../../lib/haptics';
 import CompanyHeader     from '../../components/CompanyHeader';
 import PriceChart        from '../../components/PriceChart';
@@ -31,6 +32,21 @@ export default function StockPage() {
 
   const { company, financials, loading, financialsLoading, error, rateLimited, isWaking, dataSource, isStale } =
     useTickerData(ticker);
+
+  const { price: livePrice, changePercent: liveChangePercent, isLive } =
+    useRealTimePrice(ticker);
+
+  // Predictive pre-warm — fires once per ticker, kicks off background cache
+  // warming for the 5 most likely "next click" peers before the user navigates
+  useEffect(() => {
+    if (!ticker) return;
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    fetch(`${API}/api/company/predictive-warm`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ ticker: ticker.toUpperCase() }),
+    }).catch(() => {});
+  }, [ticker]);
 
   const [tab,       setTab]       = useState('price');
   const tabRefs     = useRef({});
@@ -152,7 +168,13 @@ export default function StockPage() {
 
         {/* Company header — dims slightly while snapshot is stale, fades to full when fresh data arrives */}
         <div style={{ opacity: isStale ? 0.82 : 1, transition: 'opacity 0.35s ease' }}>
-          <CompanyHeader company={company} financials={financials} />
+          <CompanyHeader
+            company={company}
+            financials={financials}
+            livePrice={livePrice}
+            liveChangePercent={liveChangePercent}
+            isLive={isLive}
+          />
         </div>
 
         {/* Neural Alpha orb — shown once financials are loaded, sits between header and tabs */}

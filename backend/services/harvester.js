@@ -217,4 +217,4 @@ function start() {
   });
 }
 
-module.exports = { start, stats };
+module.exports = { start, stats, harvestTicker };

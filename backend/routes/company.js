@@ -1,6 +1,19 @@
-const express = require('express');
-const router = express.Router();
-const ctrl = require('../controllers/company');
+const express   = require('express');
+const router    = express.Router();
+const ctrl      = require('../controllers/company');
+const predictor = require('../services/predictor');
+
+const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,14}$/i;
+
+// Predictive pre-warm — fires when user lands on a ticker page.
+// Immediately returns the related tickers being warmed; warming runs in background.
+router.post('/predictive-warm', (req, res) => {
+  const ticker = (req.body?.ticker || '').toUpperCase().trim();
+  if (!TICKER_RE.test(ticker)) return res.status(400).json({ error: 'Invalid ticker' });
+  const related = predictor.getRelated(ticker);
+  predictor.warmRelated(ticker).catch(() => {});
+  return res.json({ warming: related });
+});
 
 // Search
 router.get('/search', ctrl.searchCompanies);
