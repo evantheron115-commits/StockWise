@@ -17,6 +17,7 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
     "axios": "^1.6.0",
+    "framer-motion": "^12.38.0",
     "next": "^16.2.3",
     "next-auth": "^4.24.11",
     "react": "^18.2.0",

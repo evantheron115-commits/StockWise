@@ -1,5 +1,6 @@
 import { useRouter } from 'next/router';
 import { useState, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
 import Head from 'next/head';
 import { useTickerData } from '../../hooks/useTickerData';
@@ -221,8 +222,9 @@ export default function StockPage() {
           ))}
         </div>
 
+        <AnimatePresence mode="wait" initial={false}>
         {tab === 'price' && (
-          <>
+          <motion.div key="price" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
             <PriceChart ticker={ticker?.toUpperCase()} />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
               {[
@@ -242,57 +244,58 @@ export default function StockPage() {
             <p className="text-xs text-gray-600 text-center mt-2 mb-6" style={{ opacity: 0.6 }}>
               For informational purposes only. Not financial advice.
             </p>
-          </>
+          </motion.div>
         )}
 
         {tab === 'summary' && (
-          <>
+          <motion.div key="summary" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
             <CompanySummary company={company} financials={financials} />
             <p className="text-xs text-gray-600 text-center mt-6 mb-2" style={{ opacity: 0.6 }}>
               For informational purposes only. Not financial advice.
             </p>
-          </>
+          </motion.div>
         )}
 
         {tab === 'financials' && (
-          <>
+          <motion.div key="financials" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
             {financialsLoading ? <FinancialsSkeleton /> : <FinancialTable financials={financials} />}
             {!financialsLoading && (
               <p className="text-xs text-gray-600 text-center mt-6 mb-2" style={{ opacity: 0.6 }}>
                 For informational purposes only. Not financial advice.
               </p>
             )}
-          </>
+          </motion.div>
         )}
 
         {tab === 'ratios' && (
-          <>
+          <motion.div key="ratios" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
             {financialsLoading ? <FinancialsSkeleton /> : <KeyRatios ticker={ticker?.toUpperCase()} financials={financials} company={company} />}
             {!financialsLoading && (
               <p className="text-xs text-gray-600 text-center mt-6 mb-2" style={{ opacity: 0.6 }}>
                 For informational purposes only. Not financial advice.
               </p>
             )}
-          </>
+          </motion.div>
         )}
 
         {tab === 'dcf' && (
-          <>
+          <motion.div key="dcf" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
             <DCFTool ticker={ticker?.toUpperCase()} currentPrice={company?.price} />
             <p className="text-xs text-gray-600 text-center mt-2 mb-6" style={{ opacity: 0.6 }}>
               For informational purposes only. Not financial advice.
             </p>
-          </>
+          </motion.div>
         )}
 
         {tab === 'chat' && (
-          <>
+          <motion.div key="chat" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
             <CommunityChat ticker={ticker?.toUpperCase()} />
             <p className="text-xs text-gray-600 text-center mt-2 mb-6" style={{ opacity: 0.6 }}>
               For informational purposes only. Not financial advice.
             </p>
-          </>
+          </motion.div>
         )}
+        </AnimatePresence>
 
       </div>
     </>

@@ -160,7 +160,10 @@ export function useTickerData(ticker) {
             const isRateLimit = err.isRateLimit || status === 429;
             if (!isNotFound && !isRateLimit && finRetryCount.current < FIN_MAX_RETRIES) {
               finRetryCount.current += 1;
-              finRetryRef.current = setTimeout(attemptFinancials, FIN_RETRY_DELAY);
+              finRetryRef.current = setTimeout(() => {
+                finRetryRef.current = null; // clear BEFORE re-entry so finally can read it
+                attemptFinancials();
+              }, FIN_RETRY_DELAY);
               return;
             }
             // Exhausted retries or definitive failure — leave financials null

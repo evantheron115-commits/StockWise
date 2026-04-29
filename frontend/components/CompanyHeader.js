@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import WatchlistButton from './WatchlistButton';
 import { hapticLight } from '../lib/haptics';
 
@@ -40,8 +41,15 @@ export default function CompanyHeader({ company, financials, livePrice, liveChan
 
   const logoUrl = `https://financialmodelingprep.com/image-stock/${company.ticker}.png`;
 
+  const dotGlow = Math.min(12, 4 + Math.abs(displayChange ?? 0) * 0.8);
+
   return (
-    <div className="card mb-5">
+    <motion.div
+      className="card mb-5"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+    >
 
       {/* Top row — identity + price */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -81,7 +89,7 @@ export default function CompanyHeader({ company, financials, livePrice, liveChan
                 {isLive && (
                   <span className="relative flex h-2 w-2 flex-shrink-0" aria-label="Live">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" style={{ boxShadow: '0 0 6px #4ade80' }} />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" style={{ boxShadow: `0 0 ${dotGlow}px #4ade80` }} />
                   </span>
                 )}
                 <div
@@ -145,7 +153,7 @@ export default function CompanyHeader({ company, financials, livePrice, liveChan
         </div>
       )}
 
-    </div>
+    </motion.div>
   );
 }
 

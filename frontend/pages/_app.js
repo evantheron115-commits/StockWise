@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Component, useState, useRef, useEffect } from 'react';
 import { SessionProvider, useSession, signOut } from 'next-auth/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import DisclaimerModal from '../components/DisclaimerModal';
 import ConnectionGate from '../components/ConnectionGate';
 import AuroraBackground from '../components/AuroraBackground';
@@ -205,6 +206,7 @@ function Nav() {
 }
 
 export default function App({ Component, pageProps: { session, ...pageProps } }) {
+  const router = useRouter();
   return (
     <SessionProvider session={session}>
       <SplashGuard />
@@ -219,9 +221,19 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
           <AuroraBackground />
           <Nav />
           <main className="flex-1">
-            <ErrorBoundary>
-              <Component {...pageProps} />
-            </ErrorBoundary>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={router.pathname}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <ErrorBoundary>
+                  <Component {...pageProps} />
+                </ErrorBoundary>
+              </motion.div>
+            </AnimatePresence>
           </main>
 
           <footer
