@@ -65,10 +65,15 @@ export async function spatialTick() {
 
 // Market-magnitude haptic — call on each live price update.
 // Maps the day's changePercent to physical sensation intensity.
+// Throttled to once per 10s to satisfy Apple HIG battery-drain guidelines.
 // Sub-0.5% noise is silenced entirely to prevent haptic fatigue.
+let _lastMarketHapticAt = 0;
 export async function triggerMarketHaptic(changePercent) {
+  const now = Date.now();
+  if (now - _lastMarketHapticAt < 10_000) return;
   const abs = Math.abs(changePercent ?? 0);
   if (abs < 0.5) return;
+  _lastMarketHapticAt = now;
   const h = await plugin();
   if (!h) return;
   try {

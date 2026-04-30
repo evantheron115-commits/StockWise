@@ -6,6 +6,7 @@ import { Component, useState, useRef, useEffect } from 'react';
 import { SessionProvider, useSession, signOut } from 'next-auth/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import DisclaimerModal from '../components/DisclaimerModal';
+import Onboarding from '../components/Onboarding';
 import ConnectionGate from '../components/ConnectionGate';
 import AuroraBackground from '../components/AuroraBackground';
 import StatusSentinel from '../components/StatusSentinel';
@@ -261,6 +262,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
           </footer>
 
           <DisclaimerModal />
+          <Onboarding />
         </div>
       </ConnectionGate>
     </SessionProvider>

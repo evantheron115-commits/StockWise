@@ -1,33 +1,46 @@
-name: iOS → App Store
+name: iOS → TestFlight
 
-# Manual trigger only — re-enable push trigger once Apple secrets are configured
-# (P12_CERTIFICATE, P12_PASSWORD, PROVISIONING_PROFILE, APPLE_TEAM_ID, ASC_PRIVATE_KEY, ASC_KEY_ID, ASC_ISSUER_ID)
+# Triggers:
+#   Push tag v1.0.0 (or any v*.*.*) → automatic build + upload
+#   GitHub Actions tab → "Run workflow" → manual build
 on:
   workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
 
 env:
-  WORKSPACE: frontend/ios/App/App.xcworkspace
-  SCHEME: App
-  BUNDLE_ID: com.valubull.app
+  WORKSPACE:  frontend/ios/App/App.xcworkspace
+  SCHEME:     App
+  BUNDLE_ID:  com.valubull.app
+
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   NEXT_PUBLIC_API_URL     — your Railway backend URL
+#   P12_CERTIFICATE         — base64-encoded Distribution .p12 file
+#   P12_PASSWORD            — .p12 export password
+#   PROVISIONING_PROFILE    — base64-encoded .mobileprovision file
+#   APPLE_TEAM_ID           — 10-char Apple Developer Team ID (e.g. ABC1234XYZ)
+#   ASC_KEY_ID              — App Store Connect API Key ID
+#   ASC_ISSUER_ID           — App Store Connect Issuer ID (UUID)
+#   ASC_PRIVATE_KEY         — contents of the .p8 private key file (not base64)
 
 jobs:
-  deploy:
-    runs-on: macos-latest
+  build-and-upload:
+    runs-on: macos-15      # Xcode 16 — Apple Silicon cloud runner
 
     steps:
       # ── 1. Source ────────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Node + web build ──────────────────────────────────────────────────
-      - name: Setup Node
+      # ── 2. Node.js + web build ──────────────────────────────────────────────
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
@@ -35,35 +48,35 @@ jobs:
         working-directory: frontend
         env:
           NEXT_BUILD_TARGET: mobile
-          # Your Railway backend URL — set this secret in GitHub repo settings
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: npm run build
 
-      # ── 3. Capacitor iOS project ─────────────────────────────────────────────
-      # On the very first run the ios/ folder doesn't exist — cap add ios creates
-      # it and then commits it back so future runs just sync instead.
+      # ── 3. Capacitor iOS ─────────────────────────────────────────────────────
       - name: Add or sync Capacitor iOS
         working-directory: frontend
         run: |
           if [ ! -d "ios" ]; then
-            echo "ios/ not found — running cap add ios (first-time setup)"
             npx cap add ios
-            npx cap sync ios
-          else
-            npx cap sync ios
           fi
+          npx cap sync ios
 
       - name: Commit generated iOS project (first run only)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add frontend/ios
-          # Only commits if there are staged changes (no-op on subsequent runs)
-          git diff --cached --quiet || git commit -m "chore: add generated Capacitor iOS project [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: sync Capacitor iOS project [skip ci]"
           git push || true
 
-      # ── 4. CocoaPods ────────────────────────────────────────────────────────
-      - name: Cache CocoaPods
+      # ── 4. CocoaPods ─────────────────────────────────────────────────────────
+      - name: Cache CocoaPods specs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cocoapods
+          key: cocoapods-specs-${{ runner.os }}
+          restore-keys: cocoapods-specs-
+
+      - name: Cache Pods directory
         uses: actions/cache@v4
         with:
           path: frontend/ios/App/Pods
@@ -72,9 +85,13 @@ jobs:
 
       - name: Pod install
         working-directory: frontend/ios/App
-        run: pod install --repo-update
+        run: pod install
 
-      # ── 5. Code signing ──────────────────────────────────────────────────────
+      # ── 5. Tooling ───────────────────────────────────────────────────────────
+      - name: Install xcpretty
+        run: gem install xcpretty --no-document
+
+      # ── 6. Code signing ──────────────────────────────────────────────────────
       - name: Import distribution certificate
         uses: apple-actions/import-codesign-certs@v3
         with:
@@ -86,15 +103,15 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode \
             > ~/Library/MobileDevice/Provisioning\ Profiles/dist.mobileprovision
-          # Extract the UUID so xcodebuild can find the profile by ID
           PROFILE_UUID=$(security cms -D \
             -i ~/Library/MobileDevice/Provisioning\ Profiles/dist.mobileprovision \
             | plutil -extract UUID raw -)
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
 
-      # ── 6. Build & archive ───────────────────────────────────────────────────
+      # ── 7. Archive ────────────────────────────────────────────────────────────
       - name: Archive
         run: |
+          set -o pipefail
           xcodebuild archive \
             -workspace "$WORKSPACE" \
             -scheme     "$SCHEME" \
@@ -103,10 +120,10 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             "CODE_SIGN_IDENTITY=iPhone Distribution" \
             PROVISIONING_PROFILE="$PROFILE_UUID" \
-            -allowProvisioningUpdates \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             | xcpretty
 
-      # ── 7. Export IPA ────────────────────────────────────────────────────────
+      # ── 8. Export IPA ─────────────────────────────────────────────────────────
       - name: Export IPA
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
@@ -114,19 +131,16 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key>
-            <string>manual</string>
+            <key>method</key>               <string>app-store-connect</string>
+            <key>teamID</key>               <string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key>         <string>manual</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>${{ env.BUNDLE_ID }}</key>
               <string>${{ env.PROFILE_UUID }}</string>
             </dict>
-            <key>stripSwiftSymbols</key><true/>
-            <key>uploadSymbols</key><true/>
+            <key>stripSwiftSymbols</key>    <true/>
+            <key>uploadSymbols</key>        <true/>
           </dict></plist>
           PLIST
 
@@ -135,11 +149,19 @@ jobs:
             -exportPath  "$RUNNER_TEMP/ipa" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
-      # ── 8. Upload to App Store Connect ───────────────────────────────────────
-      - name: Upload to App Store Connect
+      # ── 9. Save IPA as artifact (always — useful for manual inspection) ───────
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ValuBull-${{ github.ref_name }}-ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
+          retention-days: 30
+
+      # ── 10. Upload to TestFlight ──────────────────────────────────────────────
+      - name: Upload to TestFlight
         run: |
           mkdir -p ~/.private_keys
-          echo "${{ secrets.ASC_PRIVATE_KEY }}" \
+          printf '%s' "${{ secrets.ASC_PRIVATE_KEY }}" \
             > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
 
           IPA=$(find "$RUNNER_TEMP/ipa" -name "*.ipa" | head -1)

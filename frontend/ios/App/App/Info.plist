@@ -51,5 +51,11 @@
 	<string>ValuBull uses Face ID to protect your financial data and secure your account.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera access may be used for future profile photo features.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>ValuBull sends alerts for major price moves and market events so you never miss a significant move in your watchlist.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 </dict>
 </plist>
