@@ -100,6 +100,71 @@ function fillCompanyMetrics(company, financials) {
   return company;
 }
 
+// Sector target net-income margins for Ascension Model convergence.
+// Represents a mature, profitable company in each sector.
+const SECTOR_TARGET_MARGINS = {
+  'Technology':             0.22,
+  'Healthcare':             0.16,
+  'Consumer Cyclical':      0.08,
+  'Consumer Defensive':     0.09,
+  'Financial Services':     0.20,
+  'Industrials':            0.10,
+  'Energy':                 0.12,
+  'Utilities':              0.12,
+  'Real Estate':            0.25,
+  'Communication Services': 0.16,
+  'Basic Materials':        0.10,
+};
+
+// Ascension Model: synthetic FCF for companies with negative/zero reported FCF.
+//
+// 1. Revenue CAGR — computed from up to 3 years of income history.
+//    Capped at (sector growth rate + 15pp) to prevent fantasy projections.
+// 2. Margin expansion — current net margin linearly expands toward the sector
+//    target over 5 years.  If the company is already above target, the target
+//    is used as the floor (no regression assumed).
+// 3. Year-5 synthetic FCF — projected revenue × year-5 margin × 0.85
+//    (FCF conversion discount vs net income; conservative but defensible).
+//
+// Returns null if insufficient history to compute a CAGR.
+function ascensionFCF(incomeHistory, sector) {
+  if (!Array.isArray(incomeHistory) || incomeHistory.length < 2) return null;
+
+  // Sort oldest-first for CAGR calculation
+  const sorted = [...incomeHistory]
+    .filter((r) => r?.revenue > 0)
+    .sort((a, b) => (a.date || a.year || 0) > (b.date || b.year || 0) ? 1 : -1);
+
+  if (sorted.length < 2) return null;
+
+  const latest = sorted[sorted.length - 1];
+  const base   = sorted[Math.max(0, sorted.length - 4)]; // up to 3 years back
+  const years  = Math.min(sorted.length - 1, 3);
+
+  // Revenue CAGR
+  const rawCAGR = Math.pow(latest.revenue / base.revenue, 1 / years) - 1;
+  const profile = getSectorProfile(sector);
+  const cagrCap = profile.growthRate + 0.15;
+  const cagr    = Math.min(Math.max(rawCAGR, 0), cagrCap);
+
+  // Current net margin (may be negative for loss-making companies)
+  const currentMargin = latest.netIncome != null && latest.revenue > 0
+    ? latest.netIncome / latest.revenue
+    : 0;
+
+  // Sector target margin
+  const targetMargin = matchSector(sector, SECTOR_TARGET_MARGINS) ?? 0.10;
+  const floorMargin  = Math.max(currentMargin, 0); // start from 0 if deeply negative
+
+  // Year-5 projected values
+  const projectedRevenue = latest.revenue * Math.pow(1 + cagr, 5);
+  const year5Margin      = floorMargin + (targetMargin - floorMargin) * (5 / 5); // full 5-yr expansion
+  const projectedNI      = projectedRevenue * Math.max(year5Margin, 0.01);
+
+  // FCF ≈ net income × 0.85 (typical FCF/NI conversion for growth cos)
+  return projectedNI * 0.85;
+}
+
 // Derive the best available FCF and recommended DCF defaults for a ticker.
 // Resolution order:
 //   1. Reported freeCashFlow from cash-flow statement
@@ -134,11 +199,13 @@ function deriveDCFInputs(financials, company) {
     }
   }
 
-  // 3. Sector proxy: revenue × typical FCF margin for the sector
+  // 3. Ascension Model — for negative/zero FCF companies (Uber, Palantir, etc.)
+  //    Uses the actual 3-year revenue CAGR and projects linear margin expansion
+  //    from the company's current operating margin toward the sector target.
+  //    More accurate than a static sector-average proxy.
   if (!freeCashFlow && latestIS.revenue > 0) {
-    const margin     = matchSector(company?.sector, SECTOR_FCF_MARGINS) ?? 0.10;
-    freeCashFlow     = latestIS.revenue * margin;
-    projectionMethod = `Projected (${company?.sector || 'Market'} avg FCF margin)`;
+    freeCashFlow     = ascensionFCF(financials?.income, company?.sector);
+    projectionMethod = 'Ascension Model (CAGR + margin expansion)';
   }
 
   const netDebt = latestBS.netDebt ??

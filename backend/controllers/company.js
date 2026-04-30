@@ -593,21 +593,22 @@ async function getLogoProxy(req, res) {
     }
   } catch { /* miss — fetch fresh */ }
 
-  // 2. Fetch from FMP CDN
+  // 2. Fetch from FMP CDN — deduplicated so concurrent cold-start requests
+  //    for the same ticker fire exactly one upstream call.
   const url = `https://financialmodelingprep.com/image-stock/${ticker}.png`;
   try {
-    const resp = await require('axios').get(url, { responseType: 'arraybuffer', timeout: 6000 });
-    let buf  = Buffer.from(resp.data);
-    let mime = 'image/webp';
-
-    if (sharp) {
-      buf = await sharp(buf).resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 85 }).toBuffer();
-    } else {
-      mime = resp.headers['content-type'] || 'image/png';
-    }
-
-    await setCache(cacheKey, { data: buf.toString('base64'), mime }, TTL_30D);
-
+    const { buf, mime } = await withDedup(`logo:fetch:${ticker}`, async () => {
+      const resp = await require('axios').get(url, { responseType: 'arraybuffer', timeout: 6000 });
+      let b    = Buffer.from(resp.data);
+      let m    = 'image/webp';
+      if (sharp) {
+        b = await sharp(b).resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 85 }).toBuffer();
+      } else {
+        m = resp.headers['content-type'] || 'image/png';
+      }
+      await setCache(cacheKey, { data: b.toString('base64'), mime: m }, TTL_30D);
+      return { buf: b, mime: m };
+    });
     res.set('Content-Type', mime);
     res.set('Cache-Control', 'public, max-age=2592000, immutable');
     return res.send(buf);

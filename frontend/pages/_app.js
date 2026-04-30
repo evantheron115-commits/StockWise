@@ -11,10 +11,11 @@ import ConnectionGate from '../components/ConnectionGate';
 import AuroraBackground from '../components/AuroraBackground';
 import StatusSentinel from '../components/StatusSentinel';
 import { IS_NATIVE } from '../lib/mobileAuth';
+import { migrateLocalStorageJWT } from '../lib/secureStore';
 
 // Hides the Capacitor splash screen once React has mounted and the session
-// state is known. Without this, a white WebView background flashes between
-// the splash and first render on slower devices.
+// state is known. Also runs the one-time JWT migration from localStorage to
+// @capacitor/preferences on the first native launch after this update.
 function SplashGuard() {
   const { status } = useSession();
   const dismissed = useRef(false);
@@ -22,6 +23,7 @@ function SplashGuard() {
   useEffect(() => {
     if (dismissed.current || status === 'loading') return;
     dismissed.current = true;
+    migrateLocalStorageJWT();
     if (!IS_NATIVE) return;
     import('@capacitor/splash-screen')
       .then(({ SplashScreen }) => SplashScreen.hide({ fadeOutDuration: 200 }))
