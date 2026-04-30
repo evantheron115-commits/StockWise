@@ -255,26 +255,31 @@ export default function CommandPalette() {
                 {/* Search results — local list first, API fallback */}
                 {(localResults.length > 0 || results.length > 0) && (
                   <div className="py-2">
-                    {(localResults.length > 0 ? localResults : results).map(r => (
-                      <button
-                        key={r.ticker}
-                        onClick={() => go(r.ticker)}
-                        onMouseEnter={() => prefetchCompany(r.ticker)}
-                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-mono font-semibold text-brand-400 text-sm w-16 shrink-0">
-                            {r.ticker}
-                          </span>
-                          <span className="text-gray-300 text-sm truncate">{r.name}</span>
-                        </div>
-                        {r.exchange && (
-                          <span className={`text-xs shrink-0 ml-2 font-medium ${exchangeColor(r.exchange)}`}>
-                            {r.exchange}
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                    {(localResults.length > 0 ? localResults : results).map((r, i) => {
+                      // Sovereign glow: top 3 results by market cap (or list position for local)
+                      const isSovereign = i < 3 && (r.marketCap > 0 || localResults.length > 0);
+                      return (
+                        <button
+                          key={r.ticker}
+                          onClick={() => go(r.ticker)}
+                          onMouseEnter={() => prefetchCompany(r.ticker)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`font-mono font-semibold text-sm w-16 shrink-0 ${isSovereign ? 'text-brand-300' : 'text-brand-400'}`}
+                              style={isSovereign ? { textShadow: '0 0 8px rgba(99,102,241,0.55)' } : undefined}>
+                              {r.ticker}
+                            </span>
+                            <span className={`text-sm truncate ${isSovereign ? 'text-gray-200' : 'text-gray-300'}`}>{r.name}</span>
+                          </div>
+                          {r.exchange && (
+                            <span className={`text-xs shrink-0 ml-2 font-medium ${exchangeColor(r.exchange)}`}>
+                              {r.exchange}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 

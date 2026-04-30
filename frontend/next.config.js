@@ -17,6 +17,10 @@ if (process.env.NODE_ENV === 'production' && !isMobileBuild) {
 const nextConfig = {
   reactStrictMode: false,
 
+  experimental: {
+    scrollRestoration: true,
+  },
+
   // SWC strips all console.log/warn/info from the mobile bundle at compile time.
   // console.error is preserved — it surfaces genuine runtime failures.
   // On web builds this is left off so developers keep their logs during local work.

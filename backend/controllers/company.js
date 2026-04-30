@@ -527,19 +527,92 @@ async function searchCompanies(req, res) {
 
   try {
     const response = await polygon.searchTickers(query);
-    const filtered  = (response?.results || []).slice(0, 10).map((r) => ({
-      ticker:   r.ticker,
-      name:     r.name,
-      exchange: friendlyExchange(r.primary_exchange || r.market || ''),
-      market:   r.market || '',
-      locale:   r.locale || '',
-    }));
+    const raw = (response?.results || []).slice(0, 12);
+
+    // Enrich with cached market cap for intelligent ranking.
+    // Best-effort: 200ms timeout per lookup; unresolved entries get null and
+    // sort to the bottom so the overall search response is never delayed.
+    const settled = await Promise.allSettled(
+      raw.map(async (r) => {
+        let marketCap = null;
+        try {
+          const cached = await Promise.race([
+            getCache(`company:${r.ticker}`),
+            new Promise((_, rej) => setTimeout(rej, 200)),
+          ]);
+          marketCap = cached?.marketCap ?? null;
+        } catch { /* timeout or cache miss — leave null */ }
+        return {
+          ticker:    r.ticker,
+          name:      r.name,
+          exchange:  friendlyExchange(r.primary_exchange || r.market || ''),
+          market:    r.market || '',
+          locale:    r.locale || '',
+          marketCap,
+        };
+      })
+    );
+
+    const filtered = settled
+      .filter((s) => s.status === 'fulfilled')
+      .map((s) => s.value)
+      .sort((a, b) => (b.marketCap ?? -1) - (a.marketCap ?? -1))
+      .slice(0, 10);
+
     return res.json({ data: filtered });
   } catch (err) {
     if (err.isRateLimit) return sendRateLimit(res);
-    console.error('[searchCompanies]', err.message);
+    log.error('[searchCompanies]', { err: err.message });
     const detail = process.env.NODE_ENV === 'development' ? err.message : undefined;
     return res.status(500).json({ error: 'Search failed.', detail });
+  }
+}
+
+// ── GET /api/company/logo/:ticker ──────────────────────────────────────────────
+// Fetches the FMP company logo, converts to 64×64 WebP, caches in Redis 30 days.
+// Most useful for the Capacitor mobile build where next/image doesn't optimize.
+
+let sharp;
+try { sharp = require('sharp'); } catch { /* optional — falls back to raw PNG */ }
+
+async function getLogoProxy(req, res) {
+  const ticker = (req.params.ticker || '').toUpperCase().trim();
+  if (!TICKER_RE.test(ticker)) return res.status(400).json({ error: 'Invalid ticker' });
+
+  const cacheKey = `logo:v1:${ticker}`;
+  const TTL_30D  = 30 * 24 * 3600;
+
+  // 1. Redis hit
+  try {
+    const cached = await getCache(cacheKey);
+    if (cached?.data) {
+      const buf = Buffer.from(cached.data, 'base64');
+      res.set('Content-Type', cached.mime);
+      res.set('Cache-Control', 'public, max-age=2592000, immutable');
+      return res.send(buf);
+    }
+  } catch { /* miss — fetch fresh */ }
+
+  // 2. Fetch from FMP CDN
+  const url = `https://financialmodelingprep.com/image-stock/${ticker}.png`;
+  try {
+    const resp = await require('axios').get(url, { responseType: 'arraybuffer', timeout: 6000 });
+    let buf  = Buffer.from(resp.data);
+    let mime = 'image/webp';
+
+    if (sharp) {
+      buf = await sharp(buf).resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 85 }).toBuffer();
+    } else {
+      mime = resp.headers['content-type'] || 'image/png';
+    }
+
+    await setCache(cacheKey, { data: buf.toString('base64'), mime }, TTL_30D);
+
+    res.set('Content-Type', mime);
+    res.set('Cache-Control', 'public, max-age=2592000, immutable');
+    return res.send(buf);
+  } catch {
+    return res.status(502).json({ error: 'Logo unavailable' });
   }
 }
 
@@ -551,4 +624,5 @@ module.exports = {
   runDCF,
   searchCompanies,
   getNews,
+  getLogoProxy,
 };

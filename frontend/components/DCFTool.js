@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { runDCF } from '../lib/api';
+import { usePersistentState } from '../hooks/usePersistentState';
 import {
   hapticSelectionStart, hapticSelectionChanged, hapticSelectionEnd,
   hapticSuccess, hapticWarning, hapticValueGravity,
@@ -63,7 +64,7 @@ function quickCalcIV(baseInputs, liveInputs) {
 }
 
 export default function DCFTool({ ticker, currentPrice }) {
-  const [inputs, setInputs] = useState(DEFAULT_INPUTS);
+  const [inputs, setInputs] = usePersistentState(`valubull_dcf_${ticker}`, DEFAULT_INPUTS);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState(null);

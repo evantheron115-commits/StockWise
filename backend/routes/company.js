@@ -18,6 +18,9 @@ router.post('/predictive-warm', (req, res) => {
 // Search
 router.get('/search', ctrl.searchCompanies);
 
+// Logo proxy — 64×64 WebP, Redis-cached 30 days (most useful for Capacitor mobile)
+router.get('/logo/:ticker', ctrl.getLogoProxy);
+
 // Company overview
 router.get('/:ticker', ctrl.getCompany);
 

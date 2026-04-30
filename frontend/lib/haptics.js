@@ -63,6 +63,25 @@ export async function spatialTick() {
   try { await h.Haptics.impact({ style: h.ImpactStyle.Light }); } catch {}
 }
 
+// Market-magnitude haptic — call on each live price update.
+// Maps the day's changePercent to physical sensation intensity.
+// Sub-0.5% noise is silenced entirely to prevent haptic fatigue.
+export async function triggerMarketHaptic(changePercent) {
+  const abs = Math.abs(changePercent ?? 0);
+  if (abs < 0.5) return;
+  const h = await plugin();
+  if (!h) return;
+  try {
+    if (abs > 2.0) {
+      // Big move — the "feels like a market event" pulse
+      await h.Haptics.notification({ type: h.NotificationType.Success });
+    } else {
+      // Moderate move — directional confirmation
+      await h.Haptics.impact({ style: h.ImpactStyle.Medium });
+    }
+  } catch {}
+}
+
 // Value gravity — fires when the DCF intrinsic value crosses into a proximity zone
 // relative to the current market price. Intensity escalates as IV approaches price,
 // giving the sliders a physical "gravitational pull" sensation near fair value.

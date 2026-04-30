@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSocket, releaseSocket } from '../lib/socketClient';
+import { triggerMarketHaptic } from '../lib/haptics';
 
 const POLL_INTERVAL_MS = 30 * 1000; // HTTP fallback polls every 30s when socket is down
 
@@ -62,7 +63,10 @@ export function useRealTimePrice(ticker) {
       if (data.ticker !== tickerRef.current?.toUpperCase()) return;
       if (data.price         != null) setPrice(data.price);
       if (data.change        != null) setChange(data.change);
-      if (data.changePercent != null) setChangePercent(data.changePercent);
+      if (data.changePercent != null) {
+        setChangePercent(data.changePercent);
+        triggerMarketHaptic(data.changePercent);
+      }
     }
 
     function onConnect()    { subscribe(); }
