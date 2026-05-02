@@ -12,6 +12,7 @@ env:
   WORKSPACE:  frontend/ios/App/App.xcworkspace
   SCHEME:     App
   BUNDLE_ID:  com.valubull.app
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Required GitHub Secrets (Settings → Secrets → Actions):
 #   NEXT_PUBLIC_API_URL     — your Railway backend URL
