@@ -3,11 +3,13 @@ name: Setup iOS Identity
 # Generates a Distribution Certificate + App Store Provisioning Profile
 # using the App Store Connect API — no Mac, no Keychain Access, no manual clicks.
 #
-# Triggers:
-#   workflow_dispatch  — run manually from GitHub Actions tab to bootstrap secrets
-#   workflow_call      — called by ios-deploy.yml when P12_CERTIFICATE is absent
+# Run this workflow manually ONCE from the Actions tab to bootstrap your secrets.
+# After it completes, download the "ios-identity" artifact and save the two files
+# as GitHub repository secrets:
+#   P12_CERTIFICATE      ← contents of p12_base64.txt
+#   PROVISIONING_PROFILE ← contents of profile_base64.txt
 #
-# Required GitHub Secrets:
+# Required GitHub Secrets (must already exist before running):
 #   ASC_KEY_ID       App Store Connect API Key ID
 #   ASC_ISSUER_ID    App Store Connect Issuer ID (UUID)
 #   ASC_PRIVATE_KEY  Full contents of the .p8 private-key file (not base64)
@@ -16,33 +18,10 @@ name: Setup iOS Identity
 
 on:
   workflow_dispatch:
-  workflow_call:
-    secrets:
-      ASC_KEY_ID:
-        required: true
-      ASC_ISSUER_ID:
-        required: true
-      ASC_PRIVATE_KEY:
-        required: true
-      APPLE_TEAM_ID:
-        required: true
-      P12_PASSWORD:
-        required: true
-    outputs:
-      p12_base64:
-        description: "Base64-encoded Distribution .p12"
-        value: ${{ jobs.generate.outputs.p12_base64 }}
-      profile_base64:
-        description: "Base64-encoded .mobileprovision"
-        value: ${{ jobs.generate.outputs.profile_base64 }}
 
 jobs:
   generate:
     runs-on: ubuntu-latest
-
-    outputs:
-      p12_base64:     ${{ steps.gen.outputs.P12_BASE64 }}
-      profile_base64: ${{ steps.gen.outputs.PROFILE_BASE64 }}
 
     steps:
       - name: Checkout
@@ -68,14 +47,7 @@ jobs:
           APP_NAME:        ValuBull
         run: python scripts/generate-ios-identity.py
 
-      # ── Save outputs to files and upload as artifact ─────────────────────────
-      # GITHUB_TOKEN cannot write secrets, so we write the values to text files
-      # and upload them as a zipped artifact. Download the artifact, open the
-      # two .txt files, and paste their contents as GitHub Secrets:
-      #   P12_CERTIFICATE      ← p12_base64.txt
-      #   PROVISIONING_PROFILE ← profile_base64.txt
       - name: Save outputs as downloadable artifact
-        if: github.event_name == 'workflow_dispatch'
         env:
           P12_B64:     ${{ steps.gen.outputs.P12_BASE64 }}
           PROFILE_B64: ${{ steps.gen.outputs.PROFILE_BASE64 }}
@@ -83,12 +55,11 @@ jobs:
           mkdir -p /tmp/ios-identity
           printf '%s' "$P12_B64"     > /tmp/ios-identity/p12_base64.txt
           printf '%s' "$PROFILE_B64" > /tmp/ios-identity/profile_base64.txt
-          echo "✅ Files written. Download the artifact and save as GitHub Secrets:"
+          echo "✅ Files written. Download the artifact below and save as GitHub Secrets:"
           echo "   P12_CERTIFICATE      ← p12_base64.txt"
           echo "   PROVISIONING_PROFILE ← profile_base64.txt"
 
       - name: Upload identity artifact
-        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: ios-identity
