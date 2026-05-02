@@ -4,10 +4,10 @@
 ---
 
 ## App Name
-ValuBull: Intelligent Equity Analysis
+ValuBull
 
 ## Subtitle (30 chars max)
-Institutional-Grade Stock Research
+Institutional Stock Research
 
 ---
 
