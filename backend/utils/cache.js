@@ -1,6 +1,7 @@
 'use strict';
-const Redis = require('ioredis');
-const log   = require('./logger');
+const Redis     = require('ioredis');
+const log       = require('./logger');
+const { coalesce, inFlightCount } = require('./requestCoalescer');
 
 // ── In-Memory Fallback ─────────────────────────────────────────────────────────
 // Active whenever Redis is unavailable. Capped at MAX_ENTRIES to prevent
@@ -97,19 +98,10 @@ async function deleteCache(key) {
 }
 
 // ── Request Deduplication ──────────────────────────────────────────────────────
-// If two requests arrive for the same uncached key simultaneously, only ONE
-// upstream FMP call fires. The second request waits for the first's promise.
-
-const inFlight = new Map();
+// Delegates to requestCoalescer — single source of truth for in-flight dedup.
 
 async function withDedup(key, fetcher) {
-  if (inFlight.has(key)) {
-    log.info(`[Cache] Coalescing duplicate request: ${key}`);
-    return inFlight.get(key);
-  }
-  const p = fetcher().finally(() => inFlight.delete(key));
-  inFlight.set(key, p);
-  return p;
+  return coalesce(key, fetcher);
 }
 
 // ── Diagnostics ────────────────────────────────────────────────────────────────
@@ -119,7 +111,7 @@ function getCacheStatus() {
     redis:      redisOK ? 'connected' : 'unavailable',
     memEntries: mem.size,
     memMax:     MAX_ENTRIES,
-    inFlight:   inFlight.size,
+    inFlight:   inFlightCount(),
   };
 }
 

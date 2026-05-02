@@ -70,9 +70,16 @@ function validateTicker(ticker, res) {
 async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
   const cacheKey = `company:${ticker}`;
 
+  // Merge the 60s price L1 on top of any cached company object so callers always
+  // see the freshest available price without re-fetching the full profile.
+  async function withPriceOverlay(company) {
+    const priceL1 = await tc.getTickerPriceL1(ticker);
+    return priceL1 ? { ...company, ...priceL1 } : company;
+  }
+
   // ── 1. Hot cache (Redis / in-memory) ─────────────────────────────────────────
   const cached = await getCache(cacheKey);
-  if (cached) return { data: cached, source: 'cache' };
+  if (cached) return { data: await withPriceOverlay(cached), source: 'cache' };
 
   // ── 2. DB Fortress — serves even when FMP is unreachable ─────────────────────
   if (!skipDbCache) {
@@ -85,7 +92,7 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
           _fetchCompany(ticker, { skipDbCache: true }).catch(() => {})
         );
       }
-      return { data: dbHit.data, source: 'db' };
+      return { data: await withPriceOverlay(dbHit.data), source: 'db' };
     }
   }
 
@@ -171,6 +178,14 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
         if (c.peRatio !== null && (c.peRatio <= 0 || c.peRatio > 5000)) {
           c.peRatio = (c.price > 0 && c.eps > 0) ? +(c.price / c.eps).toFixed(2) : null;
         }
+
+        // Store the fast-changing fields in the 60s L1 price cache so subsequent
+        // requests within the same minute get a fresh price without calling FMP.
+        tc.setTickerPriceL1(ticker, {
+          price: c.price, change: c.change, changePercent: c.changePercent,
+          high52w: c.high52w, low52w: c.low52w, avgVolume: c.avgVolume,
+          peRatio: c.peRatio, eps: c.eps, marketCap: c.marketCap,
+        }).catch(() => {});
       }
     } catch (qErr) {
       log.warn(`[_fetchCompany] Quote fetch failed for ${ticker}`, { err: qErr.message });

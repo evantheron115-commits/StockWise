@@ -1,6 +1,7 @@
 'use strict';
-const pool = require('../db/index');
-const log  = require('../utils/logger');
+const pool               = require('../db/index');
+const log                = require('../utils/logger');
+const { getCache, setCache } = require('../utils/cache');
 
 const COMPANY_FRESH_HOURS = 4;
 const COMPANY_MAX_HOURS   = 24;
@@ -93,9 +94,26 @@ async function setTickerCacheFinancials(ticker, financials) {
   }
 }
 
+// ── L1 Price Cache (Redis-only, 60-second TTL) ────────────────────────────────
+// Stores only the frequently-changing market fields: price, change, volume.
+// Overlaid onto the 24h company object so users see fresh prices without
+// evicting — or re-fetching — the full company profile.
+
+const PRICE_L1_TTL = 60; // seconds
+
+async function getTickerPriceL1(ticker) {
+  return getCache(`price:${ticker.toUpperCase()}`);
+}
+
+async function setTickerPriceL1(ticker, priceData) {
+  await setCache(`price:${ticker.toUpperCase()}`, priceData, PRICE_L1_TTL);
+}
+
 module.exports = {
   getTickerCacheCompany,
   setTickerCacheCompany,
   getTickerCacheFinancials,
   setTickerCacheFinancials,
+  getTickerPriceL1,
+  setTickerPriceL1,
 };

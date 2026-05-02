@@ -17,6 +17,12 @@ if (process.env.NODE_ENV === 'production' && !isMobileBuild) {
 const nextConfig = {
   reactStrictMode: false,
 
+  // Expose build target to browser code so components can choose
+  // relative paths (Vercel edge) vs. full Railway URL (Capacitor).
+  env: {
+    NEXT_PUBLIC_BUILD_TARGET: process.env.NEXT_BUILD_TARGET || 'web',
+  },
+
   experimental: {
     scrollRestoration: true,
   },
@@ -49,6 +55,40 @@ const nextConfig = {
       {
         source: '/:file(.*\\.(?:ico|png|svg|webp|woff2?))',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      // Cache the logo proxy at Vercel's edge for 30 days.
+      // s-maxage instructs CDN/Edge nodes; stale-while-revalidate serves
+      // the cached copy while a fresh fetch happens in the background.
+      {
+        source: '/logo/:ticker',
+        headers: [{
+          key: 'Cache-Control',
+          value: 'public, s-maxage=2592000, stale-while-revalidate=86400, immutable',
+        }],
+      },
+      // Next.js HTML pages: serve from Vercel CDN for 1 day; revalidate quietly.
+      // The dynamic stock data itself is fetched client-side from Railway — this
+      // only caches the HTML shell so the initial paint is instant at the edge.
+      {
+        source: '/(.*)',
+        headers: [{
+          key: 'Cache-Control',
+          value: 'public, s-maxage=86400, stale-while-revalidate=86400',
+        }],
+      },
+    ];
+  },
+
+  // Rewrite /logo/:ticker through Next.js so Vercel's edge CDN sits in front
+  // of the Railway logo proxy, enabling 30-day edge caching for all logos.
+  async rewrites() {
+    if (isMobileBuild) return [];
+    const apiBase = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiBase) return [];
+    return [
+      {
+        source:      '/logo/:ticker',
+        destination: `${apiBase}/api/company/logo/:ticker`,
       },
     ];
   },

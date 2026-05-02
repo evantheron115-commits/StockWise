@@ -40,7 +40,12 @@ export default function CompanyHeader({ company, financials, livePrice, liveChan
     ? Math.max(2, Math.min(98, ((company.price - company.low52w) / priceRange) * 100))
     : 50;
 
-  const logoUrl = `https://financialmodelingprep.com/image-stock/${company.ticker}.png`;
+  // Web: route through Vercel rewrite → edge CDN caches for 30 days
+  // Mobile: use full Railway URL (Capacitor can't resolve relative paths)
+  const isMobile = process.env.NEXT_PUBLIC_BUILD_TARGET === 'mobile';
+  const logoUrl  = isMobile
+    ? `${process.env.NEXT_PUBLIC_API_URL}/api/company/logo/${company.ticker}`
+    : `/logo/${company.ticker}`;
 
   const dotGlow = Math.min(12, 4 + Math.abs(displayChange ?? 0) * 0.8);
 
