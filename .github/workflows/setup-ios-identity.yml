@@ -1,0 +1,87 @@
+name: Setup iOS Identity
+
+# Generates a Distribution Certificate + App Store Provisioning Profile
+# using the App Store Connect API — no Mac, no Keychain Access, no manual clicks.
+#
+# Triggers:
+#   workflow_dispatch  — run manually from GitHub Actions tab to bootstrap secrets
+#   workflow_call      — called by ios-deploy.yml when P12_CERTIFICATE is absent
+#
+# Required GitHub Secrets:
+#   ASC_KEY_ID       App Store Connect API Key ID
+#   ASC_ISSUER_ID    App Store Connect Issuer ID (UUID)
+#   ASC_PRIVATE_KEY  Full contents of the .p8 private-key file (not base64)
+#   APPLE_TEAM_ID    10-character Apple Developer Team ID
+#   P12_PASSWORD     Password to encrypt the generated .p12
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      ASC_KEY_ID:
+        required: true
+      ASC_ISSUER_ID:
+        required: true
+      ASC_PRIVATE_KEY:
+        required: true
+      APPLE_TEAM_ID:
+        required: true
+      P12_PASSWORD:
+        required: true
+    outputs:
+      p12_base64:
+        description: "Base64-encoded Distribution .p12"
+        value: ${{ jobs.generate.outputs.p12_base64 }}
+      profile_base64:
+        description: "Base64-encoded .mobileprovision"
+        value: ${{ jobs.generate.outputs.profile_base64 }}
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    outputs:
+      p12_base64:     ${{ steps.gen.outputs.P12_BASE64 }}
+      profile_base64: ${{ steps.gen.outputs.PROFILE_BASE64 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install PyJWT cryptography requests
+
+      - name: Generate iOS Distribution Identity
+        id: gen
+        env:
+          ASC_KEY_ID:      ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:   ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          APPLE_TEAM_ID:   ${{ secrets.APPLE_TEAM_ID }}
+          P12_PASSWORD:    ${{ secrets.P12_PASSWORD }}
+          BUNDLE_ID:       com.valubull.app
+          APP_NAME:        ValuBull
+        run: python scripts/generate-ios-identity.py
+
+      # ── Persist as repository secrets via GitHub CLI ──────────────────────────
+      # This step runs only on manual dispatch so the generated artifacts are
+      # automatically saved as secrets — subsequent ios-deploy.yml runs will find
+      # them and skip regeneration entirely (saving ~60 s per build).
+      - name: Save outputs as repository secrets
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          P12_B64:      ${{ steps.gen.outputs.P12_BASE64 }}
+          PROFILE_B64:  ${{ steps.gen.outputs.PROFILE_BASE64 }}
+        run: |
+          gh secret set P12_CERTIFICATE      --body "$P12_B64"
+          gh secret set PROVISIONING_PROFILE --body "$PROFILE_B64"
+          echo "✅ Secrets P12_CERTIFICATE and PROVISIONING_PROFILE saved."
+          echo ""
+          echo "You can now push a version tag to trigger a full build:"
+          echo "  git tag v1.0.0 && git push origin v1.0.0"

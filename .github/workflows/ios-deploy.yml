@@ -15,17 +15,35 @@ env:
 
 # Required GitHub Secrets (Settings → Secrets → Actions):
 #   NEXT_PUBLIC_API_URL     — your Railway backend URL
-#   P12_CERTIFICATE         — base64-encoded Distribution .p12 file
-#   P12_PASSWORD            — .p12 export password
-#   PROVISIONING_PROFILE    — base64-encoded .mobileprovision file
 #   APPLE_TEAM_ID           — 10-char Apple Developer Team ID (e.g. ABC1234XYZ)
 #   ASC_KEY_ID              — App Store Connect API Key ID
 #   ASC_ISSUER_ID           — App Store Connect Issuer ID (UUID)
 #   ASC_PRIVATE_KEY         — contents of the .p8 private key file (not base64)
+#   P12_PASSWORD            — password for the .p12 certificate
+#
+# Optional (auto-generated if absent):
+#   P12_CERTIFICATE         — base64-encoded Distribution .p12
+#   PROVISIONING_PROFILE    — base64-encoded .mobileprovision
 
 jobs:
+  # ── Self-provisioning: generate cert + profile via App Store Connect API ─────
+  # Runs every time (idempotent — reuses existing cert/profile when present).
+  # build-and-upload prefers P12_CERTIFICATE/PROVISIONING_PROFILE secrets when
+  # they exist, and falls back to these outputs when they are absent.
+  provision:
+    name: Provision iOS Identity
+    uses: ./.github/workflows/setup-ios-identity.yml
+    secrets:
+      ASC_KEY_ID:      ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID:   ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+      APPLE_TEAM_ID:   ${{ secrets.APPLE_TEAM_ID }}
+      P12_PASSWORD:    ${{ secrets.P12_PASSWORD }}
+
   build-and-upload:
     runs-on: macos-15      # Xcode 16 — Apple Silicon cloud runner
+    needs: [provision]
+    if: always()           # run even when provision job was skipped
 
     steps:
       # ── 1. Source ────────────────────────────────────────────────────────────
@@ -52,13 +70,13 @@ jobs:
         run: npm run build
 
       # ── 3. Capacitor iOS ─────────────────────────────────────────────────────
-      - name: Add or sync Capacitor iOS
+      - name: Sync Capacitor iOS (with file integrity guard)
         working-directory: frontend
         run: |
           if [ ! -d "ios" ]; then
             npx cap add ios
           fi
-          npx cap sync ios
+          node scripts/native-sync.js
 
       - name: Commit generated iOS project (first run only)
         run: |
@@ -91,24 +109,45 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty --no-document
 
-      # ── 6. Code signing ──────────────────────────────────────────────────────
+      # ── 6. Resolve signing credentials ───────────────────────────────────────
+      # Prefer pre-saved secrets; fall back to outputs from the provision job.
+      - name: Resolve P12 and profile
+        id: creds
+        env:
+          P12_SAVED:      ${{ secrets.P12_CERTIFICATE }}
+          PROFILE_SAVED:  ${{ secrets.PROVISIONING_PROFILE }}
+          P12_GENERATED:     ${{ needs.provision.outputs.p12_base64 }}
+          PROFILE_GENERATED: ${{ needs.provision.outputs.profile_base64 }}
+        run: |
+          P12="${P12_SAVED:-$P12_GENERATED}"
+          PROFILE="${PROFILE_SAVED:-$PROFILE_GENERATED}"
+          if [ -z "$P12" ] || [ -z "$PROFILE" ]; then
+            echo "ERROR: No P12 or provisioning profile available. Run setup-ios-identity.yml first."
+            exit 1
+          fi
+          echo "::add-mask::$P12"
+          echo "::add-mask::$PROFILE"
+          echo "p12=$P12"         >> "$GITHUB_OUTPUT"
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+
+      # ── 7. Code signing ──────────────────────────────────────────────────────
       - name: Import distribution certificate
         uses: apple-actions/import-codesign-certs@v3
         with:
-          p12-file-base64: ${{ secrets.P12_CERTIFICATE }}
+          p12-file-base64: ${{ steps.creds.outputs.p12 }}
           p12-password:    ${{ secrets.P12_PASSWORD }}
 
       - name: Install provisioning profile
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode \
+          echo "${{ steps.creds.outputs.profile }}" | base64 --decode \
             > ~/Library/MobileDevice/Provisioning\ Profiles/dist.mobileprovision
           PROFILE_UUID=$(security cms -D \
             -i ~/Library/MobileDevice/Provisioning\ Profiles/dist.mobileprovision \
             | plutil -extract UUID raw -)
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
 
-      # ── 7. Archive ────────────────────────────────────────────────────────────
+      # ── 8. Archive ────────────────────────────────────────────────────────────
       - name: Archive
         run: |
           set -o pipefail
@@ -123,53 +162,30 @@ jobs:
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             | xcpretty
 
-      # ── 8. Export IPA ─────────────────────────────────────────────────────────
-      - name: Export IPA
+      # ── 9. Export IPA + upload to TestFlight ─────────────────────────────────
+      - name: Export and upload to TestFlight
         run: |
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>method</key>               <string>app-store-connect</string>
-            <key>teamID</key>               <string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key>         <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${{ env.BUNDLE_ID }}</key>
-              <string>${{ env.PROFILE_UUID }}</string>
-            </dict>
-            <key>stripSwiftSymbols</key>    <true/>
-            <key>uploadSymbols</key>        <true/>
-          </dict></plist>
-          PLIST
+          mkdir -p ~/.private_keys
+          printf '%s' "${{ secrets.ASC_PRIVATE_KEY }}" \
+            > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+          sed \
+            -e "s/__TEAM_ID__/${{ secrets.APPLE_TEAM_ID }}/g" \
+            -e "s/__PROFILE_UUID__/$PROFILE_UUID/g" \
+            -e "s/__ASC_KEY_ID__/${{ secrets.ASC_KEY_ID }}/g" \
+            -e "s/__ASC_ISSUER_ID__/${{ secrets.ASC_ISSUER_ID }}/g" \
+            frontend/ios/App/App/ExportOptions.plist \
+            > "$RUNNER_TEMP/ExportOptions.plist"
 
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/ValuBull.xcarchive" \
             -exportPath  "$RUNNER_TEMP/ipa" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
-      # ── 9. Save IPA as artifact (always — useful for manual inspection) ───────
+      # ── 10. Save IPA as artifact (always — useful for manual inspection) ──────
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: ValuBull-${{ github.ref_name }}-ipa
           path: ${{ runner.temp }}/ipa/*.ipa
           retention-days: 30
-
-      # ── 10. Upload to TestFlight ──────────────────────────────────────────────
-      - name: Upload to TestFlight
-        run: |
-          mkdir -p ~/.private_keys
-          printf '%s' "${{ secrets.ASC_PRIVATE_KEY }}" \
-            > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
-
-          IPA=$(find "$RUNNER_TEMP/ipa" -name "*.ipa" | head -1)
-          echo "Uploading: $IPA"
-
-          xcrun altool --upload-app \
-            --type ios \
-            --file "$IPA" \
-            --apiKey    "${{ secrets.ASC_KEY_ID }}" \
-            --apiIssuer "${{ secrets.ASC_ISSUER_ID }}" \
-            --verbose
