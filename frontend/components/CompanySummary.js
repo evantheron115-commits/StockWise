@@ -1,21 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { getNews } from '../lib/api';
 
 export default function CompanySummary({ company, financials }) {
-  const [news,        setNews]        = useState([]);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [newsError,   setNewsError]   = useState(null);
-  const fetched = useRef(false);
-
-  useEffect(() => {
-    if (!company?.ticker || fetched.current) return;
-    fetched.current = true;
-    setNewsLoading(true);
-    getNews(company.ticker)
-      .then(({ payload }) => setNews(payload || []))
-      .catch(() => setNewsError('Could not load news.'))
-      .finally(() => setNewsLoading(false));
-  }, [company?.ticker]);
 
   if (!company) {
     return <div className="card mb-6 text-sm text-gray-600">Company data unavailable.</div>;
@@ -102,84 +87,7 @@ export default function CompanySummary({ company, financials }) {
         </div>
       </div>
 
-      {/* Latest News */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-white">Latest News</h2>
-          {news.length > 0 && (
-            <span className="text-xs text-gray-600">{news.length} articles</span>
-          )}
-        </div>
-
-        {newsLoading && (
-          <div className="space-y-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="space-y-2">
-                <div className="skeleton h-4 w-3/4" />
-                <div className="skeleton h-3 w-1/2" />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {newsError && (
-          <p className="text-sm text-gray-600">{newsError}</p>
-        )}
-
-        {!newsLoading && !newsError && news.length === 0 && (
-          <p className="text-sm text-gray-600">No recent news found.</p>
-        )}
-
-        {!newsLoading && news.length > 0 && (
-          <div className="space-y-0 divide-y divide-white/[0.05]">
-            {news.map((article, i) => (
-              <NewsItem key={i} article={article} />
-            ))}
-          </div>
-        )}
-      </div>
-
     </div>
-  );
-}
-
-function NewsItem({ article }) {
-  return (
-    <a
-      href={article.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block py-4 group first:pt-0 last:pb-0"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-200 group-hover:text-brand-300 transition-colors leading-snug mb-1">
-            {article.title}
-          </p>
-          {article.summary && (
-            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
-              {article.summary}
-            </p>
-          )}
-          <div className="flex items-center gap-3 mt-2">
-            {article.source && (
-              <span className="text-xs text-gray-600 font-medium">{article.source}</span>
-            )}
-            {article.publishedAt && (
-              <span className="text-xs text-gray-700">{fmtDate(article.publishedAt)}</span>
-            )}
-          </div>
-        </div>
-        {article.image && (
-          <img
-            src={article.image}
-            alt=""
-            className="w-16 h-12 object-cover rounded-lg flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity"
-            onError={(e) => { e.target.style.display = 'none'; }}
-          />
-        )}
-      </div>
-    </a>
   );
 }
 
