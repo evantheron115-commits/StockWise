@@ -14,7 +14,8 @@ const {
 } = require('../utils/normalize');
 const { calculateDCF } = require('../utils/dcf');
 const { fillCompanyMetrics, deriveDCFInputs } = require('../utils/smartFill');
-const db = require('../db/queries');
+const db    = require('../db/queries');
+const edgar = require('../services/edgarService');
 
 // Build a minimal company object from Polygon ticker details.
 // Used as Phase-2 fallback when FMP returns empty for a valid ticker.
@@ -233,6 +234,9 @@ async function _fetchFinancials(ticker, { skipDbCache = false } = {}) {
 
   // ── 3. API fetch ──────────────────────────────────────────────────────────────
   const data = await withDedup(cacheKey, async () => {
+    let fmpErr = null;
+
+    // Tier 1: FMP
     try {
       const [incomeRaw, balanceRaw, cashflowRaw] = await Promise.all([
         fmp.fetchIncomeStatement(ticker, 5),
@@ -246,27 +250,52 @@ async function _fetchFinancials(ticker, { skipDbCache = false } = {}) {
         cashflow: normalizeCashFlow(cashflowRaw),
       };
 
-      const allRows = [
-        ...result.income.map((r)   => ({ ...r, period: r.period || 'FY' })),
-        ...result.balance.map((r)  => ({ ...r, period: r.period || 'FY' })),
-        ...result.cashflow.map((r) => ({ ...r, period: r.period || 'FY' })),
-      ];
-      db.upsertFinancials(ticker, allRows).catch((e) =>
-        console.error('[DB] upsertFinancials:', e.message)
-      );
-      tc.setTickerCacheFinancials(ticker, result).catch((e) =>
-        console.error('[TickerCache] financials:', e.message)
-      );
-      await setCache(cacheKey, result, TTL.FINANCIALS);
-      return result;
-
-    } catch (apiErr) {
-      if (apiErr.isRateLimit) throw apiErr;
-      log.warn(`[_fetchFinancials] API error for ${ticker}, trying DB`, { err: apiErr.message });
-      const rows = await db.getFinancialsFromDB(ticker);
-      if (rows.length) { await setCache(cacheKey, rows, TTL.FINANCIALS); return rows; }
-      throw apiErr;
+      if (result.income.length || result.balance.length || result.cashflow.length) {
+        const allRows = [
+          ...result.income.map((r)   => ({ ...r, period: r.period || 'FY' })),
+          ...result.balance.map((r)  => ({ ...r, period: r.period || 'FY' })),
+          ...result.cashflow.map((r) => ({ ...r, period: r.period || 'FY' })),
+        ];
+        db.upsertFinancials(ticker, allRows).catch((e) =>
+          console.error('[DB] upsertFinancials:', e.message)
+        );
+        tc.setTickerCacheFinancials(ticker, result).catch((e) =>
+          console.error('[TickerCache] financials:', e.message)
+        );
+        await setCache(cacheKey, result, TTL.FINANCIALS);
+        return result;
+      }
+      // FMP returned an empty response — fall through to EDGAR
+      fmpErr = new Error('FMP returned empty financials');
+    } catch (err) {
+      fmpErr = err;
+      if (err.isRateLimit) {
+        log.warn(`[_fetchFinancials] FMP rate limited for ${ticker} — trying EDGAR`);
+      } else {
+        log.warn(`[_fetchFinancials] FMP error for ${ticker} — trying EDGAR`, { err: err.message });
+      }
     }
+
+    // Tier 2: SEC EDGAR (free, 90-day cache TTL)
+    try {
+      const edgarResult = await edgar.fetchFinancials(ticker);
+      if (edgarResult && (edgarResult.income.length || edgarResult.balance.length || edgarResult.cashflow.length)) {
+        log.info(`[_fetchFinancials] EDGAR success for ${ticker}`);
+        tc.setTickerCacheFinancials(ticker, edgarResult).catch((e) =>
+          console.error('[TickerCache] edgar financials:', e.message)
+        );
+        await setCache(cacheKey, edgarResult, TTL.FINANCIALS);
+        return edgarResult;
+      }
+    } catch (edgarErr) {
+      log.warn(`[_fetchFinancials] EDGAR failed for ${ticker}`, { err: edgarErr.message });
+    }
+
+    // Tier 3: DB snapshot (stale but usable)
+    const rows = await db.getFinancialsFromDB(ticker);
+    if (rows.length) { await setCache(cacheKey, rows, TTL.FINANCIALS); return rows; }
+
+    throw fmpErr || new Error(`No financial data available for ${ticker}`);
   });
 
   return { data, source: 'api' };

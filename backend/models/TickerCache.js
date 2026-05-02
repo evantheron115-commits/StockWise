@@ -2,8 +2,13 @@
 const pool = require('../db/index');
 const log  = require('../utils/logger');
 
-const FRESH_HOURS = 4;
-const MAX_HOURS   = 24;
+const COMPANY_FRESH_HOURS = 4;
+const COMPANY_MAX_HOURS   = 24;
+
+// Financials change quarterly at most — cache aggressively to preserve FMP quota
+const FINANCIALS_FRESH_HOURS = 720;  // 30 days before background refresh
+const FINANCIALS_MAX_HOURS   = 2160; // 90 days max before treated as stale
+
 const QUERY_TIMEOUT_MS = 2000; // DB must respond in 2s or we bypass it
 
 // Race a query against a hard timeout — DB latency never blocks the user
@@ -27,8 +32,8 @@ async function getTickerCacheCompany(ticker) {
       );
       if (!rows[0]?.company_json) return null;
       const age = parseFloat(rows[0].age_hours ?? 9999);
-      if (age > MAX_HOURS) return null;
-      return { data: rows[0].company_json, isFresh: age < FRESH_HOURS };
+      if (age > COMPANY_MAX_HOURS) return null;
+      return { data: rows[0].company_json, isFresh: age < COMPANY_FRESH_HOURS };
     }, QUERY_TIMEOUT_MS);
   } catch (err) {
     pool.logStats('getCompany');
@@ -63,8 +68,8 @@ async function getTickerCacheFinancials(ticker) {
       );
       if (!rows[0]?.financials_json) return null;
       const age = parseFloat(rows[0].age_hours ?? 9999);
-      if (age > MAX_HOURS) return null;
-      return { data: rows[0].financials_json, isFresh: age < FRESH_HOURS };
+      if (age > FINANCIALS_MAX_HOURS) return null;
+      return { data: rows[0].financials_json, isFresh: age < FINANCIALS_FRESH_HOURS };
     }, QUERY_TIMEOUT_MS);
   } catch (err) {
     pool.logStats('getFinancials');
