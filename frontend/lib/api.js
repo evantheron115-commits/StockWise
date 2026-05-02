@@ -69,7 +69,7 @@ export async function pingHealth() {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), 5000);
   try {
-    const r = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+    const r = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
     return r.ok;
   } catch {
     return false;
