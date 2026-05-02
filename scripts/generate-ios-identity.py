@@ -98,16 +98,24 @@ def generate_key_and_csr():
 
 # ── Step 2: Upload CSR → receive signed .cer from Apple ──────────────────────
 def get_or_create_certificate(csr_b64):
-    print("→ Checking for existing iOS Distribution certificate...", flush=True)
-    data = asc_get("/certificates", params={"filter[certificateType]": "IOS_DISTRIBUTION"})
-    for cert in data.get("data", []):
-        attrs = cert["attributes"]
-        if attrs.get("certificateType") == "IOS_DISTRIBUTION":
-            print(f"  ✓ Reusing existing certificate: {cert['id']}", flush=True)
-            # Existing cert: we don't have its private key — caller must use stored P12
-            # Signal that we need to generate a new one with our fresh key
-            # by returning None so the caller can decide
-    # No reusable cert found — create new (Apple allows 2 per team; revoke old if needed)
+    print("→ Checking for existing iOS Distribution certificates...", flush=True)
+    data     = asc_get("/certificates", params={"filter[certificateType]": "IOS_DISTRIBUTION"})
+    existing = [c for c in data.get("data", [])
+                if c["attributes"].get("certificateType") == "IOS_DISTRIBUTION"]
+
+    if len(existing) >= 2:
+        # Apple's limit is 2 — revoke the oldest to make room for the new key
+        oldest = sorted(existing, key=lambda c: c["attributes"].get("expirationDate", ""))[0]
+        print(f"  → At certificate limit (2). Revoking oldest: {oldest['id']}...", flush=True)
+        r = requests.delete(f"{ASC}/certificates/{oldest['id']}", headers=hdrs(), timeout=30)
+        r.raise_for_status()
+        print(f"  ✓ Revoked {oldest['id']}", flush=True)
+    elif len(existing) == 1:
+        print(f"  → 1 existing certificate found. Revoking to pair with fresh key: {existing[0]['id']}...", flush=True)
+        r = requests.delete(f"{ASC}/certificates/{existing[0]['id']}", headers=hdrs(), timeout=30)
+        r.raise_for_status()
+        print(f"  ✓ Revoked {existing[0]['id']}", flush=True)
+
     print("→ Uploading CSR to App Store Connect API...", flush=True)
     resp = asc_post("/certificates", {"data": {
         "type": "certificates",
@@ -116,8 +124,8 @@ def get_or_create_certificate(csr_b64):
             "csrContent":      csr_b64,
         },
     }})
-    cert_id      = resp["data"]["id"]
-    cert_der     = base64.b64decode(resp["data"]["attributes"]["certificateContent"])
+    cert_id  = resp["data"]["id"]
+    cert_der = base64.b64decode(resp["data"]["attributes"]["certificateContent"])
     print(f"  ✓ Certificate created: {cert_id}", flush=True)
     return cert_id, cert_der
 
