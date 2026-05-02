@@ -82,21 +82,13 @@ Version 1.0.0 includes:
 stocks,investing,stock market,finance,DCF,valuation,earnings,portfolio,equity,analysis,watchlist
 
 ## Support URL
-https://valubull.com/support
-<!-- Live route: /support exists on the Vercel deployment.
-     Until valubull.com DNS is configured, use your Vercel URL:
-     https://<your-project>.vercel.app/support -->
+https://stock-wise.vercel.app/support
 
 ## Marketing URL
-https://valubull.com
-<!-- Until valubull.com DNS is configured, use:
-     https://<your-project>.vercel.app -->
+https://stock-wise.vercel.app
 
 ## Privacy Policy URL
-https://valubull.com/privacy
-<!-- Live route: /privacy exists on the Vercel deployment.
-     Until valubull.com DNS is configured, use:
-     https://<your-project>.vercel.app/privacy -->
+https://stock-wise.vercel.app/privacy
 
 ---
 

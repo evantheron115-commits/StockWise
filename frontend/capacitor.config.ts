@@ -19,14 +19,22 @@ const config: CapacitorConfig = {
 
   plugins: {
     SplashScreen: {
-      launchShowDuration:  0,          // 0 = don't auto-hide; we call hide() manually
-      launchAutoHide:      false,      // keep splash until SplashScreen.hide() is called
-      backgroundColor:     '#030712', // surface-950 — matches app bg, no flash
+      launchShowDuration:  0,          // app calls SplashScreen.hide() manually
+      launchAutoHide:      false,
+      backgroundColor:     '#000000', // pure black — seamless transition into dark UI
       spinnerColor:        '#4f46e5', // brand-600
       showSpinner:         false,
       splashFullScreen:    true,
       splashImmersive:     true,
-      fadeOutDuration:     200,        // ms for the crossfade into the app
+      fadeOutDuration:     200,
+    },
+
+    // White status bar icons/text on the dark background.
+    // In Capacitor: 'LIGHT' = light-coloured content = white icons (dark bg).
+    StatusBar: {
+      style:           'LIGHT',
+      backgroundColor: '#000000',
+      overlaysWebView: false,
     },
 
     // Biometric auth — Face ID / Touch ID

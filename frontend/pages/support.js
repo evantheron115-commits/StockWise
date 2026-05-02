@@ -120,6 +120,26 @@ export default function Support() {
           </p>
         </Section>
 
+        {/* Note for App Store / Play Store reviewers */}
+        <div className="mt-8 rounded-xl border border-white/[0.07] bg-white/[0.03] px-5 py-4">
+          <p className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">
+            Note for App Reviewers
+          </p>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            {APP_NAME} is a financial data research platform that requires a live
+            internet connection. All stock prices, financial statements, and company
+            data are fetched in real time from Financial Modeling Prep and Polygon.io.
+            A network connection is necessary for any data to load. There are no
+            paywalls, subscriptions, or in-app purchases. Account creation is
+            optional — guest browsing is supported. To create a test account, use
+            any valid email address. For questions during review, contact{' '}
+            <a href={`mailto:${CONTACT}`} className="text-brand-400 hover:text-brand-300">
+              {CONTACT}
+            </a>
+            .
+          </p>
+        </div>
+
         <div className="mt-10 pt-6 border-t border-white/[0.06] flex items-center gap-4 text-xs text-gray-700">
           <Link href="/privacy" className="hover:text-gray-400 transition-colors">Privacy Policy</Link>
           <span>·</span>
