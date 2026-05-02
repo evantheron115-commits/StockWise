@@ -31,11 +31,11 @@ jobs:
     steps:
       # ── 1. Source ────────────────────────────────────────────────────────────
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── 2. Node.js + web build ──────────────────────────────────────────────
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -71,14 +71,14 @@ jobs:
 
       # ── 4. CocoaPods ─────────────────────────────────────────────────────────
       - name: Cache CocoaPods specs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cocoapods
           key: cocoapods-specs-${{ runner.os }}
           restore-keys: cocoapods-specs-
 
       - name: Cache Pods directory
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: frontend/ios/App/Pods
           key: pods-${{ hashFiles('frontend/ios/App/Podfile.lock') }}
@@ -94,7 +94,7 @@ jobs:
 
       # ── 6. Code signing ──────────────────────────────────────────────────────
       - name: Import distribution certificate
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@v4
         with:
           p12-file-base64: ${{ secrets.P12_CERTIFICATE }}
           p12-password:    ${{ secrets.P12_PASSWORD }}
@@ -153,7 +153,7 @@ jobs:
 
       # ── 10. Save IPA as artifact ──────────────────────────────────────────────
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ValuBull-${{ github.ref_name }}-ipa
           path: ${{ runner.temp }}/ipa/*.ipa
