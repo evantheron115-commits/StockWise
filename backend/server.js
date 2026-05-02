@@ -43,6 +43,8 @@ function corsOrigin(origin, callback) {
     process.env.FRONTEND_URL,
     'http://localhost:3000',
     'http://localhost:3001',
+    'capacitor://localhost',  // iOS Capacitor app
+    'http://localhost',       // Android Capacitor app
   ].filter(Boolean);
   // Allow requests with no origin (server-to-server) and Vercel preview/prod domains
   if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
