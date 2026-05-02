@@ -116,9 +116,9 @@ jobs:
             -scheme     "$SCHEME" \
             -configuration Release \
             -archivePath "$RUNNER_TEMP/ValuBull.xcarchive" \
+            -destination "generic/platform=iOS" \
             CODE_SIGN_STYLE=Manual \
             "CODE_SIGN_IDENTITY=iPhone Distribution" \
-            PROVISIONING_PROFILE="$PROFILE_UUID" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             2>&1
 
