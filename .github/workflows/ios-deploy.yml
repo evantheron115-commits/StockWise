@@ -111,14 +111,14 @@ jobs:
       # ── 7. Archive ────────────────────────────────────────────────────────────
       - name: Archive
         run: |
+          sed -i '' "s/CI_PLACEHOLDER/$PROFILE_UUID/" frontend/ios/App/App.xcodeproj/project.pbxproj
+
           xcodebuild archive \
             -workspace "$WORKSPACE" \
             -scheme     "$SCHEME" \
             -configuration Release \
             -archivePath "$RUNNER_TEMP/ValuBull.xcarchive" \
             -destination "generic/platform=iOS" \
-            CODE_SIGN_STYLE=Manual \
-            "CODE_SIGN_IDENTITY=iPhone Distribution" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             2>&1
 
