@@ -77,6 +77,7 @@ const authLimiter = rateLimit({
 
 // Routes
 app.use('/api/health',    healthRoutes);
+app.use('/health',        healthRoutes); // alias for older builds
 app.use('/api/company',   companyRoutes);
 app.use('/api/auth',      authLimiter, authRoutes);
 app.use('/api/posts',     postsRoutes);
