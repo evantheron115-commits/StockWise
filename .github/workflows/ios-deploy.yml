@@ -94,10 +94,17 @@ jobs:
 
       # ── 6. Code signing ──────────────────────────────────────────────────────
       - name: Import distribution certificate
-        uses: apple-actions/import-codesign-certs@v4
-        with:
-          p12-file-base64: ${{ secrets.P12_CERTIFICATE }}
-          p12-password:    ${{ secrets.P12_PASSWORD }}
+        run: |
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          echo "${{ secrets.P12_CERTIFICATE }}" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k build.keychain \
+            -P "${{ secrets.P12_PASSWORD }}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          rm /tmp/cert.p12
 
       - name: Install provisioning profile
         run: |
@@ -153,7 +160,7 @@ jobs:
 
       # ── 10. Save IPA as artifact ──────────────────────────────────────────────
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ValuBull-${{ github.ref_name }}-ipa
           path: ${{ runner.temp }}/ipa/*.ipa
