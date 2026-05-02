@@ -116,6 +116,42 @@ const SECTOR_TARGET_MARGINS = {
   'Basic Materials':        0.10,
 };
 
+// Sector-specific FCF/net-income conversion ratios.
+// Capital-light software converts above 1x (minimal capex, working capital release).
+// Capital-heavy sectors (energy, industrials, materials) convert well below 1x.
+const SECTOR_FCF_CONVERSION = {
+  'Technology':             1.20,
+  'Healthcare':             0.85,
+  'Consumer Cyclical':      0.85,
+  'Consumer Defensive':     0.85,
+  'Financial Services':     0.75,
+  'Industrials':            0.35,
+  'Energy':                 0.35,
+  'Utilities':              0.60,
+  'Real Estate':            0.75,
+  'Communication Services': 0.90,
+  'Basic Materials':        0.35,
+};
+
+// Parse a row's date to Unix ms for sorting. FMP may supply .date (ISO string),
+// .calendarYear (number), or .fillingDate. Falls back to original array index
+// so rows with no date metadata preserve their existing order.
+function rowDateMs(row, fallbackIndex) {
+  if (row.date) {
+    const t = new Date(row.date).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (row.calendarYear) {
+    const t = new Date(`${row.calendarYear}-01-01`).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (row.fillingDate) {
+    const t = new Date(row.fillingDate).getTime();
+    if (!isNaN(t)) return t;
+  }
+  return fallbackIndex;
+}
+
 // Ascension Model: synthetic FCF for companies with negative/zero reported FCF.
 //
 // 1. Revenue CAGR — computed from up to 3 years of income history.
@@ -123,17 +159,18 @@ const SECTOR_TARGET_MARGINS = {
 // 2. Margin expansion — current net margin linearly expands toward the sector
 //    target over 5 years.  If the company is already above target, the target
 //    is used as the floor (no regression assumed).
-// 3. Year-5 synthetic FCF — projected revenue × year-5 margin × 0.85
-//    (FCF conversion discount vs net income; conservative but defensible).
+// 3. Year-5 synthetic FCF — projected NI × sector FCF conversion ratio.
 //
 // Returns null if insufficient history to compute a CAGR.
 function ascensionFCF(incomeHistory, sector) {
   if (!Array.isArray(incomeHistory) || incomeHistory.length < 2) return null;
 
-  // Sort oldest-first for CAGR calculation
+  // Sort oldest-first for CAGR; rowDateMs with index fallback handles undated rows
   const sorted = [...incomeHistory]
     .filter((r) => r?.revenue > 0)
-    .sort((a, b) => (a.date || a.year || 0) > (b.date || b.year || 0) ? 1 : -1);
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => rowDateMs(a.r, a.i) - rowDateMs(b.r, b.i))
+    .map(({ r }) => r);
 
   if (sorted.length < 2) return null;
 
@@ -158,11 +195,12 @@ function ascensionFCF(incomeHistory, sector) {
 
   // Year-5 projected values
   const projectedRevenue = latest.revenue * Math.pow(1 + cagr, 5);
-  const year5Margin      = floorMargin + (targetMargin - floorMargin) * (5 / 5); // full 5-yr expansion
+  const year5Margin      = floorMargin + (targetMargin - floorMargin); // full 5-yr expansion
   const projectedNI      = projectedRevenue * Math.max(year5Margin, 0.01);
 
-  // FCF ≈ net income × 0.85 (typical FCF/NI conversion for growth cos)
-  return projectedNI * 0.85;
+  // FCF = projected NI × sector-specific conversion ratio
+  const fcfConversion = matchSector(sector, SECTOR_FCF_CONVERSION) ?? 0.85;
+  return projectedNI * fcfConversion;
 }
 
 // Derive the best available FCF and recommended DCF defaults for a ticker.

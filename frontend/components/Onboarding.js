@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IS_NATIVE } from '../lib/mobileAuth';
+import { IS_NATIVE, authFetch } from '../lib/mobileAuth';
+import { storageSet } from '../lib/storageProvider';
+
+const PUSH_TOKEN_KEY = 'valubull_push_token';
 
 const ONBOARDED_KEY = 'valubull_onboarded_v1';
 
@@ -56,8 +59,33 @@ const STEPS = [
   },
 ];
 
-function requestNotificationPermission() {
-  if (typeof Notification === 'undefined') return Promise.resolve('denied');
+async function requestNotificationPermission() {
+  if (IS_NATIVE) {
+    try {
+      const { PushNotifications } = await import('@capacitor/push-notifications');
+      const { receive } = await PushNotifications.requestPermissions();
+      if (receive !== 'granted') return 'denied';
+      await PushNotifications.register();
+      PushNotifications.addListener('registration', async (token) => {
+        try {
+          const r = await authFetch('/api/push/register', {
+            method: 'POST',
+            body:   JSON.stringify({ deviceToken: token.value, platform: 'ios' }),
+          });
+          if (r.ok) await storageSet(PUSH_TOKEN_KEY, token.value);
+        } catch {}
+      });
+      PushNotifications.addListener('registrationError', (err) => {
+        // eslint-disable-next-line no-console
+        console.error('[SOVEREIGN-PUSH-TOKEN] registration error', err.error);
+      });
+      return 'granted';
+    } catch {
+      return 'denied';
+    }
+  }
+  // Web — standard Notifications API
+  if (typeof Notification === 'undefined') return 'denied';
   return Notification.requestPermission();
 }
 

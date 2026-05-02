@@ -134,3 +134,16 @@ CREATE TABLE IF NOT EXISTS ticker_cache (
 
 CREATE INDEX IF NOT EXISTS idx_ticker_cache_company_age   ON ticker_cache(company_cached_at);
 CREATE INDEX IF NOT EXISTS idx_ticker_cache_financials_age ON ticker_cache(financials_cached_at);
+
+-- Push notification device tokens
+CREATE TABLE IF NOT EXISTS push_devices (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_token TEXT         NOT NULL,
+  platform     VARCHAR(20)  NOT NULL DEFAULT 'ios',
+  created_at   TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ  DEFAULT NOW(),
+  UNIQUE(user_id, device_token)
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id);

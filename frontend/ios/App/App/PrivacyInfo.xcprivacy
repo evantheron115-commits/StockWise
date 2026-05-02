@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ValuBull does not use any tracking or advertising identifiers -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <!-- No domains receive data for tracking purposes -->
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!-- No user data is collected for App Store data nutrition label -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <!--
+        Required Reason API Declarations (mandatory since May 2024).
+        Every API in this list must be declared or the binary is auto-rejected.
+    -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+
+        <!--
+            UserDefaults — used by @capacitor/preferences to store:
+              • JWT access token and refresh token
+              • Onboarding completion flag (valubull_onboarded_v1)
+              • Push device token cache
+              • DCF input persistence per ticker
+            Reason CA92.1: Accessing user defaults to read and write values
+            that are set and managed from the app itself.
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+
+        <!--
+            File Timestamps — accessed by WKWebView, Next.js static asset cache,
+            and @capacitor/splash-screen when determining asset freshness.
+            Reason C617.1: Accessing file timestamps to manage app-controlled
+            cache files written by the app itself.
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+
+        <!--
+            Disk Space — queried by WKWebView's internal cache management to
+            decide how much space to allocate for the web layer's asset cache.
+            Reason E174.1: Accessing disk space APIs to check whether there is
+            sufficient room to complete the current task.
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
+            </array>
+        </dict>
+
+    </array>
+</dict>
+</plist>

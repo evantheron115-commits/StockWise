@@ -19,6 +19,7 @@ const healthRoutes    = require('./routes/health');
 const authRoutes      = require('./routes/auth');
 const postsRoutes     = require('./routes/posts');
 const watchlistRoutes = require('./routes/watchlist');
+const pushRoutes      = require('./routes/push');
 const autoMigrate     = require('./db/autoMigrate');
 const heartbeat       = require('./services/heartbeat');
 const harvester       = require('./services/harvester');
@@ -78,6 +79,7 @@ app.use('/api/company',   companyRoutes);
 app.use('/api/auth',      authLimiter, authRoutes);
 app.use('/api/posts',     postsRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/push',      pushRoutes);
 
 // 404 handler
 app.use((req, res) => {

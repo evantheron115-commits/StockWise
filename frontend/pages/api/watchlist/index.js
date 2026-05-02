@@ -8,7 +8,7 @@ export default async function handler(req, res) {
 
   const headers = {
     'Content-Type': 'application/json',
-    'x-api-secret': process.env.NEXTAUTH_SECRET,
+    'x-api-secret': process.env.INTERNAL_PROXY_SECRET,
   };
 
   if (req.method === 'GET') {

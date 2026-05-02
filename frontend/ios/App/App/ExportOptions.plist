@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>               <string>app-store-connect</string>
+    <key>destination</key>          <string>upload</string>
+    <key>teamID</key>               <string>__TEAM_ID__</string>
+    <key>signingStyle</key>         <string>manual</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.valubull.app</key> <string>__PROFILE_UUID__</string>
+    </dict>
+    <key>stripSwiftSymbols</key>    <true/>
+    <key>uploadSymbols</key>        <true/>
+    <key>manageAppVersionAndBuildNumber</key> <false/>
+    <key>apiKey</key>               <string>__ASC_KEY_ID__</string>
+    <key>apiIssuer</key>            <string>__ASC_ISSUER_ID__</string>
+</dict>
+</plist>

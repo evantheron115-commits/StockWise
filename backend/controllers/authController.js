@@ -51,16 +51,24 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Issue a JWT for mobile clients (Capacitor stores this in SecureStorage)
+    // Access token — 30-day lifetime, stored in @capacitor/preferences on native
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
       process.env.NEXTAUTH_SECRET,
       { expiresIn: '30d' }
     );
 
+    // Refresh token — 90-day lifetime, type claim prevents use as access token
+    const refreshToken = jwt.sign(
+      { id: user.id, type: 'refresh' },
+      process.env.NEXTAUTH_SECRET,
+      { expiresIn: '90d' }
+    );
+
     return res.json({
-      user:  { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
-      token, // mobile clients store this; web clients use NextAuth cookies instead
+      user:         { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
+      token,        // access token — short-lived API credential
+      refreshToken, // refresh token — only valid against /api/auth/refresh
     });
   } catch (err) {
     console.error('[login]', err.message);
@@ -101,4 +109,32 @@ async function deleteAccount(req, res) {
   }
 }
 
-module.exports = { register, login, oauthUpsert, deleteAccount };
+// POST /api/auth/refresh — exchange a valid refresh token for a new access token.
+// Refresh tokens have { type: 'refresh' } claim; access tokens do not.
+// This design prevents access tokens from being used as refresh tokens and vice versa.
+async function refresh(req, res) {
+  const { refreshToken } = req.body || {};
+  if (!refreshToken) return res.status(400).json({ error: 'refreshToken required.' });
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.NEXTAUTH_SECRET);
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ error: 'Invalid token type.' });
+    }
+
+    const user = await db.getUserById(decoded.id);
+    if (!user) return res.status(401).json({ error: 'User not found.' });
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, name: user.name, avatar: user.avatar },
+      process.env.NEXTAUTH_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    return res.json({ token });
+  } catch {
+    return res.status(401).json({ error: 'Refresh token expired or invalid. Please sign in again.' });
+  }
+}
+
+module.exports = { register, login, refresh, oauthUpsert, deleteAccount };

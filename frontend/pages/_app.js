@@ -12,18 +12,32 @@ import AuroraBackground from '../components/AuroraBackground';
 import StatusSentinel from '../components/StatusSentinel';
 import { IS_NATIVE } from '../lib/mobileAuth';
 import { migrateLocalStorageJWT } from '../lib/secureStore';
+import { syncPushToken } from '../lib/pushSync';
 
-// Hides the Capacitor splash screen once React has mounted and the session
-// state is known. Also runs the one-time JWT migration from localStorage to
-// @capacitor/preferences on the first native launch after this update.
+// Runs once per app launch after the session state resolves.
+// - Migrates any legacy localStorage JWT to @capacitor/preferences
+// - Re-syncs the push device token so the backend always has the latest one
+// - Hides the Capacitor splash screen
+// - Listens for valubull:auth-expired (fired by authFetch after a dead refresh)
+//   and redirects to the login screen
 function SplashGuard() {
   const { status } = useSession();
   const dismissed = useRef(false);
 
   useEffect(() => {
+    // Force sign-out if the refresh token expires mid-session
+    function onAuthExpired() {
+      window.location.href = '/auth/login?reason=session_expired';
+    }
+    window.addEventListener('valubull:auth-expired', onAuthExpired);
+    return () => window.removeEventListener('valubull:auth-expired', onAuthExpired);
+  }, []);
+
+  useEffect(() => {
     if (dismissed.current || status === 'loading') return;
     dismissed.current = true;
     migrateLocalStorageJWT();
+    syncPushToken();
     if (!IS_NATIVE) return;
     import('@capacitor/splash-screen')
       .then(({ SplashScreen }) => SplashScreen.hide({ fadeOutDuration: 200 }))

@@ -211,18 +211,54 @@ async function isInWatchlist(userId, ticker) {
 
 // ── Account management ────────────────────────────────────────────────────────
 
+async function getUserById(id) {
+  const { rows } = await pool.query(
+    'SELECT id, email, name, avatar FROM users WHERE id = $1', [id]
+  );
+  return rows[0] || null;
+}
+
 async function deleteUserAccount(userId) {
-  // watchlist rows auto-delete via CASCADE FK
+  // watchlist and push_devices auto-delete via CASCADE FK
   // post user_ids are SET NULL via FK (anonymises posts, does not delete them)
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
+// ── Push devices ──────────────────────────────────────────────────────────────
+
+async function upsertPushDevice(userId, deviceToken, platform = 'ios') {
+  await pool.query(
+    `INSERT INTO push_devices (user_id, device_token, platform, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, device_token) DO UPDATE SET
+       platform   = EXCLUDED.platform,
+       updated_at = NOW()`,
+    [userId, deviceToken, platform]
+  );
+}
+
+async function getPushDevicesByUser(userId) {
+  const { rows } = await pool.query(
+    'SELECT device_token, platform FROM push_devices WHERE user_id = $1',
+    [userId]
+  );
+  return rows;
+}
+
+async function removePushDevice(userId, deviceToken) {
+  await pool.query(
+    'DELETE FROM push_devices WHERE user_id = $1 AND device_token = $2',
+    [userId, deviceToken]
+  );
 }
 
 module.exports = {
   upsertCompany, getCompanyFromDB,
   upsertFinancials, getFinancialsFromDB,
   upsertPrices, getPricesFromDB,
-  createUser, getUserByEmail, upsertOAuthUser,
+  createUser, getUserByEmail, getUserById, upsertOAuthUser,
   createPost, getPostsByTicker,
   getWatchlist, addToWatchlist, removeFromWatchlist, isInWatchlist,
   deleteUserAccount,
+  upsertPushDevice, getPushDevicesByUser, removePushDevice,
 };
