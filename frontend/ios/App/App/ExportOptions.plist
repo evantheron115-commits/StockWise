@@ -3,7 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>method</key>               <string>app-store-connect</string>
-    <key>destination</key>          <string>upload</string>
     <key>teamID</key>               <string>__TEAM_ID__</string>
     <key>signingStyle</key>         <string>manual</string>
     <key>provisioningProfiles</key>
@@ -12,8 +11,7 @@
     </dict>
     <key>stripSwiftSymbols</key>    <true/>
     <key>uploadSymbols</key>        <true/>
+    <key>compileBitcode</key>       <false/>
     <key>manageAppVersionAndBuildNumber</key> <false/>
-    <key>apiKey</key>               <string>__ASC_KEY_ID__</string>
-    <key>apiIssuer</key>            <string>__ASC_ISSUER_ID__</string>
 </dict>
 </plist>

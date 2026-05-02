@@ -122,18 +122,12 @@ jobs:
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             2>&1
 
-      # ── 8. Export IPA + upload to TestFlight ─────────────────────────────────
-      - name: Export and upload to TestFlight
+      # ── 8. Export IPA ────────────────────────────────────────────────────────
+      - name: Export IPA
         run: |
-          mkdir -p ~/.private_keys
-          printf '%s' "${{ secrets.ASC_PRIVATE_KEY }}" \
-            > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
-
           sed \
             -e "s/__TEAM_ID__/${{ secrets.APPLE_TEAM_ID }}/g" \
             -e "s/__PROFILE_UUID__/$PROFILE_UUID/g" \
-            -e "s/__ASC_KEY_ID__/${{ secrets.ASC_KEY_ID }}/g" \
-            -e "s/__ASC_ISSUER_ID__/${{ secrets.ASC_ISSUER_ID }}/g" \
             frontend/ios/App/App/ExportOptions.plist \
             > "$RUNNER_TEMP/ExportOptions.plist"
 
@@ -142,7 +136,21 @@ jobs:
             -exportPath  "$RUNNER_TEMP/ipa" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
-      # ── 9. Save IPA as artifact ───────────────────────────────────────────────
+      # ── 9. Upload to TestFlight ───────────────────────────────────────────────
+      - name: Upload to TestFlight
+        run: |
+          mkdir -p ~/.private_keys
+          printf '%s' "${{ secrets.ASC_PRIVATE_KEY }}" \
+            > ~/.private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$(ls "$RUNNER_TEMP/ipa/"*.ipa)" \
+            --apiKey    "${{ secrets.ASC_KEY_ID }}" \
+            --apiIssuer "${{ secrets.ASC_ISSUER_ID }}" \
+            --verbose
+
+      # ── 10. Save IPA as artifact ──────────────────────────────────────────────
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
