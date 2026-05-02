@@ -68,20 +68,29 @@ jobs:
           APP_NAME:        ValuBull
         run: python scripts/generate-ios-identity.py
 
-      # ── Persist as repository secrets via GitHub CLI ──────────────────────────
-      # This step runs only on manual dispatch so the generated artifacts are
-      # automatically saved as secrets — subsequent ios-deploy.yml runs will find
-      # them and skip regeneration entirely (saving ~60 s per build).
-      - name: Save outputs as repository secrets
+      # ── Save outputs to files and upload as artifact ─────────────────────────
+      # GITHUB_TOKEN cannot write secrets, so we write the values to text files
+      # and upload them as a zipped artifact. Download the artifact, open the
+      # two .txt files, and paste their contents as GitHub Secrets:
+      #   P12_CERTIFICATE      ← p12_base64.txt
+      #   PROVISIONING_PROFILE ← profile_base64.txt
+      - name: Save outputs as downloadable artifact
         if: github.event_name == 'workflow_dispatch'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          P12_B64:      ${{ steps.gen.outputs.P12_BASE64 }}
-          PROFILE_B64:  ${{ steps.gen.outputs.PROFILE_BASE64 }}
+          P12_B64:     ${{ steps.gen.outputs.P12_BASE64 }}
+          PROFILE_B64: ${{ steps.gen.outputs.PROFILE_BASE64 }}
         run: |
-          gh secret set P12_CERTIFICATE      --body "$P12_B64"
-          gh secret set PROVISIONING_PROFILE --body "$PROFILE_B64"
-          echo "✅ Secrets P12_CERTIFICATE and PROVISIONING_PROFILE saved."
-          echo ""
-          echo "You can now push a version tag to trigger a full build:"
-          echo "  git tag v1.0.0 && git push origin v1.0.0"
+          mkdir -p /tmp/ios-identity
+          printf '%s' "$P12_B64"     > /tmp/ios-identity/p12_base64.txt
+          printf '%s' "$PROFILE_B64" > /tmp/ios-identity/profile_base64.txt
+          echo "✅ Files written. Download the artifact and save as GitHub Secrets:"
+          echo "   P12_CERTIFICATE      ← p12_base64.txt"
+          echo "   PROVISIONING_PROFILE ← profile_base64.txt"
+
+      - name: Upload identity artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-identity
+          path: /tmp/ios-identity/
+          retention-days: 1
