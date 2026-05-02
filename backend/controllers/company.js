@@ -14,8 +14,25 @@ const {
 } = require('../utils/normalize');
 const { calculateDCF } = require('../utils/dcf');
 const { fillCompanyMetrics, deriveDCFInputs } = require('../utils/smartFill');
-const db    = require('../db/queries');
-const edgar = require('../services/edgarService');
+const db       = require('../db/queries');
+const edgar    = require('../services/edgarService');
+const sentinel = require('../utils/creditSentinel');
+
+// Jittered background refresh — fires at most once per hour per ticker,
+// and only when the FMP quota is below 90%. Prevents restart avalanches.
+function _scheduleRefresh(type, ticker, refreshFn) {
+  const guardKey = `refresh:${type}:${ticker}`;
+  getCache(guardKey).then(async (active) => {
+    if (active) return;
+    if (!(await sentinel.canRefresh())) {
+      log.info(`[refresh] Quota ≥ 90% — skipping background refresh for ${type}:${ticker}`);
+      return;
+    }
+    await setCache(guardKey, 1, 3600); // debounce: one refresh per ticker per hour
+    const jitterMs = Math.floor(Math.random() * 5000); // spread across 0–5 s
+    setTimeout(() => refreshFn().catch(() => {}), jitterMs);
+  }).catch(() => {});
+}
 
 // Build a minimal company object from Polygon ticker details.
 // Used as Phase-2 fallback when FMP returns empty for a valid ticker.
@@ -88,9 +105,7 @@ async function _fetchCompany(ticker, { skipDbCache = false } = {}) {
       if (dbHit.isFresh) {
         await setCache(cacheKey, dbHit.data, TTL.COMPANY);
       } else {
-        setImmediate(() =>
-          _fetchCompany(ticker, { skipDbCache: true }).catch(() => {})
-        );
+        _scheduleRefresh('company', ticker, () => _fetchCompany(ticker, { skipDbCache: true }));
       }
       return { data: await withPriceOverlay(dbHit.data), source: 'db' };
     }
@@ -239,9 +254,7 @@ async function _fetchFinancials(ticker, { skipDbCache = false } = {}) {
       if (dbHit.isFresh) {
         await setCache(cacheKey, dbHit.data, TTL.FINANCIALS);
       } else {
-        setImmediate(() =>
-          _fetchFinancials(ticker, { skipDbCache: true }).catch(() => {})
-        );
+        _scheduleRefresh('financials', ticker, () => _fetchFinancials(ticker, { skipDbCache: true }));
       }
       return { data: dbHit.data, source: 'db' };
     }

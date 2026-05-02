@@ -1,5 +1,24 @@
 require('dotenv').config();
 
+// Sentry error tracking — initialise before anything else so uncaught
+// exceptions and unhandled rejections are captured from startup.
+// No-op if SENTRY_DSN is absent so local/staging builds are unaffected.
+let Sentry = null;
+if (process.env.SENTRY_DSN) {
+  try {
+    Sentry = require('@sentry/node');
+    Sentry.init({
+      dsn:              process.env.SENTRY_DSN,
+      environment:      process.env.NODE_ENV || 'production',
+      tracesSampleRate: 0.05, // 5 % of requests traced — keeps quota free
+    });
+    console.log('[Sentry] Initialised');
+  } catch (e) {
+    console.warn('[Sentry] Init failed — continuing without error tracking:', e.message);
+    Sentry = null;
+  }
+}
+
 // Fail fast if critical env vars are missing
 const REQUIRED_ENV = ['DATABASE_URL', 'FMP_API_KEY'];
 const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
@@ -46,8 +65,9 @@ function corsOrigin(origin, callback) {
     'capacitor://localhost',  // iOS Capacitor app
     'http://localhost',       // Android Capacitor app
   ].filter(Boolean);
-  // Allow requests with no origin (server-to-server) and Vercel preview/prod domains
-  if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
+  // Allow requests with no origin (server-to-server, curl, health checks)
+  // Vercel wildcard removed — only the explicit FRONTEND_URL is trusted
+  if (!origin || allowed.includes(origin)) {
     callback(null, true);
   } else {
     callback(new Error('Not allowed by CORS'));
@@ -75,6 +95,9 @@ const authLimiter = rateLimit({
   message: { error: 'Too many auth attempts. Please wait 15 minutes and try again.' },
 });
 
+// Sentry request handler — must be before routes
+if (Sentry) app.use(Sentry.requestHandler());
+
 // Routes
 app.use('/api/health',    healthRoutes);
 app.use('/health',        healthRoutes); // alias for older builds
@@ -83,6 +106,9 @@ app.use('/api/auth',      authLimiter, authRoutes);
 app.use('/api/posts',     postsRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/push',      pushRoutes);
+
+// Sentry error handler — must be before the 404 and global error handlers
+if (Sentry) app.use(Sentry.expressErrorHandler());
 
 // 404 handler
 app.use((req, res) => {

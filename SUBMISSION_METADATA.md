@@ -13,6 +13,10 @@ Institutional Stock Research
 
 ## App Description (4000 chars max)
 
+IMPORTANT DISCLAIMER: ValuBull is an educational tool for financial analysis and is not a registered investment adviser. All information is provided for informational purposes only and does not constitute investment, legal, or tax advice. Data is sourced from SEC EDGAR, Financial Modeling Prep, and Polygon.io and may be delayed or inaccurate. Past performance is not indicative of future results. Always consult a qualified financial professional before making any investment decision.
+
+---
+
 ValuBull delivers professional-grade financial intelligence directly to your hands. Built on the same data infrastructure used by institutional analysts, ValuBull gives independent investors access to deep equity research that was once reserved for Wall Street desks.
 
 **REAL-TIME MARKET INTELLIGENCE**
@@ -56,7 +60,7 @@ Save tickers to your personal watchlist and access them from any device. Watchli
 - Price Chart with multiple timeframes
 - Zero ads. No data selling. No paywalled core features.
 
-Disclaimer: All information provided by ValuBull is for informational and educational purposes only and does not constitute financial advice, investment advice, or any other type of advice. Past performance is not indicative of future results. Consult a qualified financial professional before making any investment decision.
+See disclaimer at the top of this description.
 
 ---
 

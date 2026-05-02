@@ -1,7 +1,6 @@
 'use strict';
-const Redis     = require('ioredis');
-const log       = require('./logger');
-const { coalesce, inFlightCount } = require('./requestCoalescer');
+const Redis = require('ioredis');
+const log   = require('./logger');
 
 // ── In-Memory Fallback ─────────────────────────────────────────────────────────
 // Active whenever Redis is unavailable. Capped at MAX_ENTRIES to prevent
@@ -69,19 +68,16 @@ const TTL = {
 // ── Cache Operations ───────────────────────────────────────────────────────────
 
 async function getCache(key) {
-  // 1. Try Redis (authoritative, longer TTLs)
   if (redisOK && redisClient) {
     try {
       const raw = await redisClient.get(key);
       if (raw) return JSON.parse(raw);
     } catch { /* fall through to memory */ }
   }
-  // 2. Fall back to in-memory
   return memGet(key);
 }
 
 async function setCache(key, data, ttl = TTL.FINANCIALS) {
-  // Always write memory — ensures instant fallback if Redis drops mid-session
   memSet(key, data, ttl);
   if (redisOK && redisClient) {
     try {
@@ -97,11 +93,55 @@ async function deleteCache(key) {
   }
 }
 
-// ── Request Deduplication ──────────────────────────────────────────────────────
-// Delegates to requestCoalescer — single source of truth for in-flight dedup.
+// ── Atomic counter (for quota tracking) ───────────────────────────────────────
+// Uses Redis INCR for atomicity across replicas; falls back to non-atomic
+// in-memory increment (acceptable for approximate quota counting).
+
+async function incrementCounter(key, ttlSec) {
+  if (redisOK && redisClient) {
+    try {
+      const count = await redisClient.incr(key);
+      if (count === 1) await redisClient.expire(key, ttlSec);
+      return count;
+    } catch { /* fall through */ }
+  }
+  const current = (memGet(key) ?? 0) + 1;
+  memSet(key, current, ttlSec);
+  return current;
+}
+
+// ── Distributed lock (cross-replica thundering-herd prevention) ───────────────
+// SET NX EX — acquires a lock only if the key does not exist.
+// Returns true if this process now holds the lock.
+// Falls back to always-true when Redis is unavailable (single-process semantics).
+
+async function acquireLock(key, ttlSec = 30) {
+  if (redisOK && redisClient) {
+    try {
+      const result = await redisClient.set(key, '1', 'NX', 'EX', ttlSec);
+      return result === 'OK';
+    } catch { /* treat as acquired so the process isn't frozen */ }
+  }
+  return true; // no Redis → always leader (graceful degradation)
+}
+
+async function releaseLock(key) {
+  if (redisOK && redisClient) {
+    try { await redisClient.del(key); } catch { /* ignore */ }
+  }
+}
+
+// ── Request Deduplication (process-local) ─────────────────────────────────────
+// Coalesces concurrent requests for the same key within a single process.
+// For cross-replica deduplication, use acquireLock() at the controller level.
+
+const inFlight = new Map();
 
 async function withDedup(key, fetcher) {
-  return coalesce(key, fetcher);
+  if (inFlight.has(key)) return inFlight.get(key);
+  const p = fetcher().finally(() => inFlight.delete(key));
+  inFlight.set(key, p);
+  return p;
 }
 
 // ── Diagnostics ────────────────────────────────────────────────────────────────
@@ -111,8 +151,12 @@ function getCacheStatus() {
     redis:      redisOK ? 'connected' : 'unavailable',
     memEntries: mem.size,
     memMax:     MAX_ENTRIES,
-    inFlight:   inFlightCount(),
+    inFlight:   inFlight.size,
   };
 }
 
-module.exports = { getCache, setCache, deleteCache, withDedup, TTL, getCacheStatus };
+module.exports = {
+  getCache, setCache, deleteCache,
+  incrementCounter, acquireLock, releaseLock,
+  withDedup, TTL, getCacheStatus,
+};

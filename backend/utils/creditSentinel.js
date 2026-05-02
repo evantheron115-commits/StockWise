@@ -1,104 +1,48 @@
 'use strict';
-const Redis = require('ioredis');
-const log   = require('./logger');
 
-const DAILY_LIMIT = 240;
-const REDIS_KEY   = 'fmp:credits:used';
+// Tracks FMP API credit consumption in Redis so all replicas share the same
+// count. Uses atomic INCR so parallel requests can't double-spend the quota.
 
-// Credit cost per FMP operation type — reflects actual upstream API call count.
-const COSTS = {
-  company:    1,
-  quote:      1,
-  search:     1,
-  financials: 3,   // income + balance + cashflow = 3 FMP requests
-  historical: 3,
-  news:       1,
-  harvester:  10,
-};
+const { incrementCounter, getCache } = require('./cache');
+const log = require('./logger');
 
-let _redis = null;
+const DAILY_LIMIT  = parseInt(process.env.FMP_DAILY_LIMIT) || 250;
+const WARNING_PCT  = 0.90; // above 90 %: disable background refreshes
+const SENTINEL_TTL = 25 * 3600; // 25 h — survives midnight, auto-expires after reset
 
-function getRedis() {
-  if (_redis) return _redis;
-  const url = process.env.REDIS_URL;
-  if (!url) return null;
-  try {
-    _redis = new Redis(url, {
-      connectTimeout:      5000,
-      enableOfflineQueue:  false,
-      maxRetriesPerRequest: 1,
-      lazyConnect:         true,
-    });
-    _redis.on('error', () => {});
-    return _redis;
-  } catch {
-    return null;
+function _todayKey() {
+  // UTC date string — resets at midnight UTC, matching FMP's reset window
+  return `fmp:calls:${new Date().toISOString().slice(0, 10)}`;
+}
+
+async function getUsage() {
+  const raw  = await getCache(_todayKey());
+  const used = typeof raw === 'number' ? raw : (parseInt(raw, 10) || 0);
+  return { used, limit: DAILY_LIMIT, pct: used / DAILY_LIMIT };
+}
+
+async function recordCall() {
+  const count = await incrementCounter(_todayKey(), SENTINEL_TTL);
+  if (count === Math.floor(DAILY_LIMIT * WARNING_PCT)) {
+    log.warn(`[CreditSentinel] FMP quota at ${Math.round(WARNING_PCT * 100)}% (${count}/${DAILY_LIMIT}) — background refreshes paused`);
   }
-}
-
-function secondsUntilMidnightUTC() {
-  const now      = Date.now();
-  const midnight = Date.UTC(
-    new Date().getUTCFullYear(),
-    new Date().getUTCMonth(),
-    new Date().getUTCDate() + 1
-  );
-  return Math.max(1, Math.floor((midnight - now) / 1000));
-}
-
-// Consume `type` credits atomically.
-// Returns { allowed, used, remaining, fortress }.
-// Fails open when Redis is unavailable — never block all traffic on infra failure.
-async function consumeCredits(type = 'company') {
-  const cost = COSTS[type] ?? 1;
-  const r    = getRedis();
-
-  if (!r) return { allowed: true, used: 0, remaining: DAILY_LIMIT, fortress: false };
-
-  try {
-    const used = await r.incrby(REDIS_KEY, cost);
-    if (used === cost) {
-      // First write this UTC day — expire counter at midnight
-      await r.expire(REDIS_KEY, secondsUntilMidnightUTC());
-    }
-    const allowed   = used <= DAILY_LIMIT;
-    const remaining = Math.max(0, DAILY_LIMIT - used);
-    if (!allowed) {
-      log.warn(`[CreditSentinel] CREDIT_EXHAUSTED — used=${used}/${DAILY_LIMIT}, type=${type}`);
-    }
-    return { allowed, used, remaining, fortress: !allowed };
-  } catch {
-    return { allowed: true, used: 0, remaining: DAILY_LIMIT, fortress: false };
+  if (count >= DAILY_LIMIT) {
+    log.error(`[CreditSentinel] FMP daily quota exhausted (${count}/${DAILY_LIMIT})`);
   }
+  return count;
 }
 
-async function getCreditsUsed() {
-  const r = getRedis();
-  if (!r) return 0;
-  try {
-    const val = await r.get(REDIS_KEY);
-    return val ? parseInt(val, 10) : 0;
-  } catch {
-    return 0;
-  }
+// Returns true if a live (user-triggered) FMP call is still allowed today
+async function canCall() {
+  const { pct } = await getUsage();
+  return pct < 1.0;
 }
 
-// Express middleware factory. Blocks FMP-consuming routes when the daily budget
-// is exhausted. Sets x-valubull-fortress: true and returns 429 with
-// CREDIT_EXHAUSTED code so the controller can fall back to DB-only mode.
-function sentinel(type = 'company') {
-  return async (req, res, next) => {
-    const result = await consumeCredits(type);
-    if (result.fortress) {
-      res.setHeader('x-valubull-fortress', 'true');
-      const err  = new Error('FMP credit budget exhausted. Serving cached data only.');
-      err.code   = 'CREDIT_EXHAUSTED';
-      err.status = 429;
-      return next(err);
-    }
-    res.setHeader('x-valubull-credits-remaining', String(result.remaining));
-    next();
-  };
+// Returns true if a background (non-user-triggered) refresh is allowed.
+// Background refreshes are paused at 90 % to leave headroom for user requests.
+async function canRefresh() {
+  const { pct } = await getUsage();
+  return pct < WARNING_PCT;
 }
 
-module.exports = { consumeCredits, getCreditsUsed, sentinel, COSTS, DAILY_LIMIT };
+module.exports = { getUsage, recordCall, canCall, canRefresh };

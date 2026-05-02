@@ -55,10 +55,16 @@ function fillCompanyMetrics(company, financials) {
   const income   = financials?.income?.[0]   || {};
   const balance  = financials?.balance?.[0]  || {};
 
-  // EPS
+  // EPS — three tiers: income statement field → derived from net income / shares
   if (company.eps == null) {
     const v = income.epsDiluted ?? income.eps ?? null;
-    if (v != null) company.eps = v;
+    if (v != null) {
+      company.eps = v;
+    } else if (income.netIncome != null && income.sharesOutstanding > 0) {
+      // EDGAR path: income rows carry sharesOutstanding; FMP rows carry epsDiluted.
+      // When epsDiluted is absent (common for EDGAR), derive it here.
+      company.eps = +(income.netIncome / income.sharesOutstanding).toFixed(4);
+    }
   }
 
   // Market cap

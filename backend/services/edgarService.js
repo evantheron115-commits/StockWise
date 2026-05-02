@@ -123,6 +123,24 @@ function _perShare(usgaap, endDate, ...tags) {
   return null;
 }
 
+// Share count concept (for EPS derivation when USD/shares tags are absent)
+function _sharesCount(usgaap, endDate, ...tags) {
+  for (const tag of tags) {
+    // Shares can appear in either 'shares' or 'USD/shares' units
+    for (const unitType of ['shares', 'USD/shares']) {
+      const units = usgaap?.[tag]?.units?.[unitType];
+      if (!units) continue;
+      // For instant counts (balance-sheet style), match by end date only
+      // For period counts (weighted average), also require annual period
+      const matches = units
+        .filter(u => u.end === endDate && _isAnnual(u))
+        .sort((a, b) => b.filed.localeCompare(a.filed));
+      if (matches.length) return matches[0].val ?? null;
+    }
+  }
+  return null;
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 async function fetchFinancials(ticker) {
@@ -194,6 +212,20 @@ async function fetchFinancials(ticker) {
     const epsDiluted = _perShare(usgaap, date, 'EarningsPerShareDiluted');
     const epsBasic   = _perShare(usgaap, date, 'EarningsPerShareBasic');
 
+    // Shares outstanding — enables EPS derivation in smartFill when USD/shares
+    // tags are absent (common for smaller or older EDGAR filers)
+    const sharesOutstanding = _sharesCount(usgaap, date,
+      'CommonStockSharesOutstanding',
+      'WeightedAverageNumberOfDilutedSharesOutstanding',
+      'WeightedAverageNumberOfSharesOutstandingBasic',
+      'CommonStockSharesIssued',
+    );
+
+    // Derive EPS from net income if the USD/shares tags came back empty
+    const computedEps = (!epsBasic && !epsDiluted && netIncome != null && sharesOutstanding > 0)
+      ? netIncome / sharesOutstanding
+      : null;
+
     const ratio = (n) => (revenue && n != null) ? +(n / revenue).toFixed(4) : null;
 
     return {
@@ -209,9 +241,9 @@ async function fetchFinancials(ticker) {
       ebitda,
       netIncome,
       netMargin:         ratio(netIncome),
-      eps:               epsBasic,
-      epsDiluted,
-      sharesOutstanding: null,
+      eps:               epsBasic   ?? computedEps,
+      epsDiluted:        epsDiluted ?? computedEps,
+      sharesOutstanding,
       _source:           'edgar',
     };
   }).filter(r => r.revenue != null || r.netIncome != null);

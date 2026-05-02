@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import CommandPalette from '../components/CommandPalette';
+import Disclaimer from '../components/shared/Disclaimer';
 
 const MARKETS = [
   {
@@ -95,6 +96,8 @@ export default function Home() {
       <p className="text-center text-xs text-gray-700 mt-10">
         Covers NYSE · NASDAQ · AMEX · European ADRs · Asian ADRs · OTC markets
       </p>
+
+      <Disclaimer className="mt-8 max-w-lg mx-auto" />
 
     </div>
   );

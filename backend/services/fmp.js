@@ -1,5 +1,6 @@
-const axios = require('axios');
-const log   = require('../utils/logger');
+const axios    = require('axios');
+const log      = require('../utils/logger');
+const sentinel = require('../utils/creditSentinel');
 
 /**
  * Financial Modeling Prep — Stable API
@@ -46,6 +47,7 @@ async function fetchWithRetry(url, retries = 1, timeoutMs = 12000) {
       }
 
       log.info(`[FMP] 200 OK (${ms}ms) ${safeUrl}`);
+      sentinel.recordCall().catch(() => {}); // non-blocking quota tracking
       return response.data;
     } catch (err) {
       const ms = Date.now() - t0;

@@ -10,6 +10,7 @@
     "db:migrate": "node db/migrate.js"
   },
   "dependencies": {
+    "@sentry/node": "^8.0.0",
     "axios": "^1.6.0",
     "sharp": "^0.33.5",
     "bcryptjs": "^2.4.3",
