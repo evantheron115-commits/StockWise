@@ -1,0 +1,142 @@
+name: Android → Play Store
+
+# Triggers: push a v*.*.* tag or run manually from the Actions tab.
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   NEXT_PUBLIC_API_URL           — Railway backend URL
+#   KEYSTORE_BASE64               — base64-encoded .jks keystore (see setup below)
+#   KEYSTORE_PASSWORD             — keystore store password
+#   KEY_ALIAS                     — signing key alias (e.g. "valubull")
+#   KEY_PASSWORD                  — signing key password
+#   GOOGLE_PLAY_SERVICE_ACCOUNT   — Google Play service account JSON (plaintext)
+#
+# One-time keystore setup (only needs Java — no Mac, no Android Studio):
+#   keytool -genkeypair -v \
+#     -keystore valubull.jks -storetype JKS \
+#     -keyalg RSA -keysize 2048 -validity 10000 \
+#     -alias valubull \
+#     -dname "CN=ValuBull, OU=Engineering, O=ValuBull, L=Unknown, S=Unknown, C=US"
+#   # On macOS/Linux: base64 -w 0 valubull.jks > valubull_b64.txt
+#   # On Windows:     certutil -encode valubull.jks valubull_b64.txt
+#   # Paste the output into GitHub Secret: KEYSTORE_BASE64
+#
+# One-time Google Play setup:
+#   1. Create the app (com.valubull.app) in Play Console
+#   2. Play Console → Setup → API access → Link to Google Cloud project
+#   3. Create a service account → grant "Release Manager" role
+#   4. Download the JSON key → paste plaintext into GOOGLE_PLAY_SERVICE_ACCOUNT
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
+
+env:
+  PACKAGE_NAME: com.valubull.app
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Source ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # ── 2. Java (Gradle requires 17+) ────────────────────────────────────────
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # ── 3. Node.js + web build ───────────────────────────────────────────────
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build static export (mobile mode)
+        working-directory: frontend
+        env:
+          NEXT_BUILD_TARGET: mobile
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: npm run build
+
+      # ── 4. Capacitor Android ─────────────────────────────────────────────────
+      - name: Init + sync Capacitor Android
+        working-directory: frontend
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      # ── 5. Android SDK ───────────────────────────────────────────────────────
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+
+      # ── 6. Version stamping ──────────────────────────────────────────────────
+      - name: Set version code and name
+        id: version
+        run: |
+          RAW="${{ github.ref_name }}"
+          # Strip leading 'v' and any non-semver chars; fall back to 1.0.0
+          VERSION_NAME=$(echo "$RAW" | sed 's/^v//' | grep -oP '^\d+\.\d+\.\d+' || echo "1.0.0")
+          VERSION_CODE=${{ github.run_number }}
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "code=$VERSION_CODE"  >> $GITHUB_OUTPUT
+
+      - name: Stamp version into app/build.gradle
+        working-directory: frontend/android/app
+        run: |
+          sed -i "s/versionCode [0-9]*/versionCode ${{ steps.version.outputs.code }}/" build.gradle
+          sed -i 's/versionName "[^"]*"/versionName "${{ steps.version.outputs.name }}"/' build.gradle
+
+      # ── 7. Code signing ──────────────────────────────────────────────────────
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/valubull.jks"
+
+      # ── 8. Build signed release AAB ──────────────────────────────────────────
+      - name: Build release AAB
+        working-directory: frontend/android
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/valubull.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file="$KEYSTORE_PATH" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      # ── 9. Upload to Play Store (Internal Testing) ───────────────────────────
+      - name: Upload to Google Play (Internal Testing)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+
+      # ── 10. Save AAB as artifact ─────────────────────────────────────────────
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ValuBull-${{ github.ref_name }}-aab
+          path: frontend/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30
