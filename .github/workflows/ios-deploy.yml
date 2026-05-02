@@ -102,9 +102,10 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
-          printf '%s' "$P12_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          printf '%s' "$P12_CERTIFICATE" | base64 -d > /tmp/cert.p12
+          P12_PASS=$(printf '%s' "$P12_PASSWORD" | tr -d '\n\r')
           security import /tmp/cert.p12 -k build.keychain \
-            -P "$P12_PASSWORD" \
+            -P "$P12_PASS" \
             -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           rm /tmp/cert.p12
