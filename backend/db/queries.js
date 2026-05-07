@@ -252,6 +252,11 @@ async function removePushDevice(userId, deviceToken) {
   );
 }
 
+async function countPushDevices() {
+  const { rows } = await pool.query('SELECT COUNT(*) FROM push_devices');
+  return parseInt(rows[0].count, 10);
+}
+
 module.exports = {
   upsertCompany, getCompanyFromDB,
   upsertFinancials, getFinancialsFromDB,
@@ -260,5 +265,5 @@ module.exports = {
   createPost, getPostsByTicker,
   getWatchlist, addToWatchlist, removeFromWatchlist, isInWatchlist,
   deleteUserAccount,
-  upsertPushDevice, getPushDevicesByUser, removePushDevice,
+  upsertPushDevice, getPushDevicesByUser, removePushDevice, countPushDevices,
 };

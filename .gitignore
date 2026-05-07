@@ -16,3 +16,5 @@ frontend/ios/App/DerivedData/
 
 *.pdf
 backend/package-lock.json
+*firebase-adminsdk*.json
+google-services.json

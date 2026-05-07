@@ -62,23 +62,19 @@ const STEPS = [
 async function requestNotificationPermission() {
   if (IS_NATIVE) {
     try {
-      const { PushNotifications } = await import('@capacitor/push-notifications');
-      const { receive } = await PushNotifications.requestPermissions();
+      const { FirebaseMessaging } = await import('@capacitor-firebase/messaging');
+      const { receive } = await FirebaseMessaging.requestPermissions();
       if (receive !== 'granted') return 'denied';
-      await PushNotifications.register();
-      PushNotifications.addListener('registration', async (token) => {
+      const { token } = await FirebaseMessaging.getToken();
+      if (token) {
         try {
           const r = await authFetch('/api/push/register', {
             method: 'POST',
-            body:   JSON.stringify({ deviceToken: token.value, platform: 'ios' }),
+            body:   JSON.stringify({ deviceToken: token, platform: 'ios' }),
           });
-          if (r.ok) await storageSet(PUSH_TOKEN_KEY, token.value);
+          if (r.ok) await storageSet(PUSH_TOKEN_KEY, token);
         } catch {}
-      });
-      PushNotifications.addListener('registrationError', (err) => {
-        // eslint-disable-next-line no-console
-        console.error('[SOVEREIGN-PUSH-TOKEN] registration error', err.error);
-      });
+      }
       return 'granted';
     } catch {
       return 'denied';
